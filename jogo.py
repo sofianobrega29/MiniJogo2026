@@ -13,13 +13,11 @@ pygame.display.set_caption("Confronto Mágico")
 
 RELOGIO = pygame.time.Clock()
 
-fundo_primeira_pessoa = pygame.image.load(
-    "imagens/Fundo/Arena.png"
-).convert()
+fundo_primeira_pessoa = pygame.image.load("imagens/Fundo/Arena.png").convert()
+fundo_terceira_pessoa = pygame.image.load("imagens/Fundo/ParedeArena2D.jpeg")
 
-fundo_primeira_pessoa = pygame.transform.scale(
-    fundo_primeira_pessoa, (LARGURA, ALTURA)
-)
+fundo_primeira_pessoa = pygame.transform.scale(fundo_primeira_pessoa, (LARGURA, ALTURA))
+fundo_terceira_pessoa = pygame.transform.scale(fundo_terceira_pessoa, (LARGURA, ALTURA - 120))
 
 def desenhar_chao(tela):
     altura_chao = 120
@@ -108,6 +106,10 @@ while rodando:
             rodando = False
 
         if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_f and not modo_feitico:
+                modo_feitico = True
+                pontos_magicos = []
+        
             if event.key == pygame.K_w or event.key == pygame.K_UP:
                 if maga.no_chao and not maga.voando:
                     # Primeiro W: pula.
@@ -173,7 +175,7 @@ while rodando:
         maga.update(TELA)
 
         if feiticeira.vida > 0:
-            feiticeira.update(TELA)
+            feiticeira.update(maga)
 
     # Atualiza os projéteis e verifica os acertos.
     for projetil in projeteis[:]:
@@ -213,7 +215,7 @@ while rodando:
 
     else:
         # O modo normal não usa a imagem de primeira pessoa.
-        TELA.fill((20, 10, 30))
+        TELA.blit(fundo_terceira_pessoa, (0,0))
         desenhar_chao(TELA)
 
         todos_sprites.draw(TELA)
