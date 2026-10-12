@@ -20,6 +20,8 @@ class Feiticeira (Entidade):
             quadro = self.spritesheet_voando.subsurface((i * 48, 0, 44, 64)).copy()
             quadro = pygame.transform.scale_by(quadro, 3)
             self.frames_voando.append(quadro)
+            self.image = self.frames_voando[0]
+            self.rect = self.image.get_rect(topleft=(x, y))
 
         self.tempo_animacao = 0
         self.quadro_atual = 0

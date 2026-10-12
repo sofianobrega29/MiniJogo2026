@@ -77,7 +77,7 @@ class Maga (Entidade):
             self.image = self.frames_voando[self.quadro_atual]
 
             # Animação suave de flutuação.
-            oscilacao = math.sin(self.tempo_voo) * 5
+            oscilacao = math.sin(self.tempo_voo) * 2
             self.rect.y += int(oscilacao)
 
         else:

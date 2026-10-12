@@ -24,7 +24,7 @@ def desenhar_chao(tela):
 
     pygame.draw.rect(
         tela,
-        (70, 65, 75),
+        (255, 231, 176),
         (0, ALTURA - altura_chao, LARGURA, altura_chao)
     )
 
