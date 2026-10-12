@@ -43,9 +43,11 @@ class Maga (Entidade):
 
         self.rect = self.image.get_rect(topleft=(x, y))
         self.hitbox = pygame.Rect(0, 0 , 30, 40)    
+
         self.tempo_animacao_voo = 0
         self.tempo_animacao_andar = 0
         self.animacao_atual = None
+        self.animacao_anterior = None
         self.quadro_atual = 0
 
         self.image = self.sprite_parada_chao
@@ -79,6 +81,10 @@ class Maga (Entidade):
         else:
             self.animacao_atual = "parar"
 
+        if self.animacao_atual != self.animacao_anterior:
+            self.quadro_atual = 0
+            self.animacao_anterior = self.animacao_atual
+            
         if self.animacao_atual == "andar":
             self.tempo_animacao_andar += 1
 
