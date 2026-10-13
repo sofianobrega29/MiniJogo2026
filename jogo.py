@@ -1,3 +1,4 @@
+
 from constantes import *
 from elementos import *
 from frieren import Maga
@@ -13,13 +14,30 @@ pygame.display.set_caption("Confronto Mágico")
 
 RELOGIO = pygame.time.Clock()
 
-fundo_primeira_pessoa = pygame.image.load("imagens/Fundo/Arena.png").convert()
-fundo_terceira_pessoa = pygame.image.load("imagens/Fundo/ParedeArena2D.jpeg")
-vida = pygame.image.load("imagens/UI/vida.png").convert_alpha()
-vida = pygame.transform.scale(vida, (60, 40))
+fundo_primeira_pessoa = pygame.image.load(
+    "imagens/Fundo/Arena.png"
+).convert()
 
-fundo_primeira_pessoa = pygame.transform.scale(fundo_primeira_pessoa, (LARGURA, ALTURA))
-fundo_terceira_pessoa = pygame.transform.scale(fundo_terceira_pessoa, (LARGURA, ALTURA - 120))
+fundo_terceira_pessoa = pygame.image.load(
+    "imagens/Fundo/ParedeArena2D.jpeg"
+).convert()
+
+vida = pygame.image.load(
+    "imagens/UI/vida.png"
+).convert_alpha()
+
+vida = pygame.transform.scale(vida, (45, 30))
+
+fundo_primeira_pessoa = pygame.transform.scale(
+    fundo_primeira_pessoa,
+    (LARGURA, ALTURA)
+)
+
+fundo_terceira_pessoa = pygame.transform.scale(
+    fundo_terceira_pessoa,
+    (LARGURA, ALTURA - 120)
+)
+
 
 def desenhar_chao(tela):
     altura_chao = 120
@@ -83,6 +101,78 @@ def reconhecer_circulo(pontos):
     return True
 
 
+def desenhar_vidas_maga(tela, maga):
+    texto = fonte_menor.render(
+        "MAGA",
+        True,
+        BRANCO
+    )
+
+    tela.blit(texto, (20, 15))
+
+    for i in range(max(0, maga.vida)):
+        tela.blit(vida, (20 + i * 50, 45))
+
+
+def desenhar_barra_vida_clone(tela, feiticeira):
+    largura_barra = 350
+    altura_barra = 26
+
+    posicao_x = LARGURA - largura_barra - 30
+    posicao_y = 35
+
+    vidas_atuais = max(
+        0,
+        min(feiticeira.vida, feiticeira.vida_maxima)
+    )
+
+    proporcao_vida = (
+        vidas_atuais / feiticeira.vida_maxima
+        if feiticeira.vida_maxima > 0
+        else 0
+    )
+
+    largura_preenchimento = int(
+        largura_barra * proporcao_vida
+    )
+
+    texto = fonte_menor.render(
+        f"FEITICEIRA CLONE: {vidas_atuais}/{feiticeira.vida_maxima}",
+        True,
+        BRANCO
+    )
+
+    tela.blit(texto, (posicao_x, 5))
+
+    pygame.draw.rect(
+        tela,
+        (45, 35, 55),
+        (posicao_x, posicao_y, largura_barra, altura_barra),
+        border_radius=8
+    )
+
+    if largura_preenchimento > 0:
+        pygame.draw.rect(
+            tela,
+            (180, 50, 220),
+            (
+                posicao_x,
+                posicao_y,
+                largura_preenchimento,
+                altura_barra
+            ),
+            border_radius=8
+        )
+
+    pygame.draw.rect(
+        tela,
+        (230, 210, 240),
+        (posicao_x, posicao_y, largura_barra, altura_barra),
+        width=2,
+        border_radius=8
+    )
+
+
 maga = Maga(150, ALTURA - 200)
 feiticeira = Feiticeira(950, 180)
 cajado = Cajado()
@@ -100,6 +190,7 @@ fonte = pygame.font.SysFont(None, 36)
 fonte_menor = pygame.font.SysFont(None, 28)
 
 rodando = True
+
 while rodando:
     RELOGIO.tick(60)
 
@@ -119,16 +210,13 @@ while rodando:
                 modo_feitico = True
                 pontos_magicos = []
 
-
-            if event.key == pygame.K_w or event.key == pygame.K_UP:
+            if event.key in (pygame.K_w, pygame.K_UP):
                 if maga.no_chao and not maga.voando:
-                    # Primeiro W: pula.
                     maga.velocidade_y = maga.forca_pulo
                     maga.no_chao = False
                     maga.pulando = True
 
                 elif maga.pulando and not maga.voando:
-                    # Segundo W durante o pulo: começa a voar.
                     maga.voando = True
                     maga.pulando = False
                     maga.velocidade_y = 0
@@ -136,16 +224,10 @@ while rodando:
 
                     print("A maga começou a voar!")
 
-            # O jogador começa andando.
-            # Ao apertar W duas vezes, começa a voar.
-            if not modo_feitico and event.key == pygame.K_w:
-                maga.contagem_w += 1
-
-                if maga.contagem_w >= 2 and not maga.voando:
-                    maga.voando = True
-                    print("A maga começou a voar!")
-
-            if not modo_feitico and event.key == pygame.K_UP:
+            if not modo_feitico and event.key in (
+                pygame.K_w,
+                pygame.K_UP
+            ):
                 maga.contagem_w += 1
 
                 if maga.contagem_w >= 2 and not maga.voando:
@@ -169,25 +251,21 @@ while rodando:
                     if reconhecer_circulo(pontos_magicos):
                         print("Círculo mágico reconhecido!")
 
-                        # O ataque começa na posição da maga.
                         projeteis.append(
                             ProjetilMagico(maga.rect.center)
                         )
                     else:
                         print("Símbolo incorreto. Tente novamente.")
 
-                    # Volta imediatamente ao modo normal.
                     modo_feitico = False
                     pontos_magicos = []
 
-    # Atualiza personagens somente no modo normal.
     if not modo_feitico:
         maga.update(TELA)
 
         if feiticeira.vida > 0:
             feiticeira.update(maga)
 
-    # Atualiza os projéteis e verifica os acertos.
     for projetil in projeteis[:]:
         if feiticeira.vida <= 0:
             projeteis.remove(projetil)
@@ -207,9 +285,7 @@ while rodando:
                 feiticeira.kill()
                 print("Inimiga derrotada!")
 
-    # DESENHO DA TELA
     if modo_feitico:
-        # A imagem de primeira pessoa aparece apenas ao desenhar.
         TELA.blit(fundo_primeira_pessoa, (0, 0))
 
         if len(pontos_magicos) > 1:
@@ -224,8 +300,7 @@ while rodando:
         cajado.desenhar(TELA)
 
     else:
-        # O modo normal não usa a imagem de primeira pessoa.
-        TELA.blit(fundo_terceira_pessoa, (0,0))
+        TELA.blit(fundo_terceira_pessoa, (0, 0))
         desenhar_chao(TELA)
 
         todos_sprites.draw(TELA)
@@ -233,20 +308,18 @@ while rodando:
         for projetil in projeteis:
             projetil.desenhar(TELA)
 
-        texto_vida = fonte.render(
-            f"Vidas da inimiga: {feiticeira.vida}",
-            True,
-            BRANCO
-        )
-        TELA.blit(texto_vida, (20, 20))
+        desenhar_vidas_maga(TELA, maga)
+        desenhar_barra_vida_clone(TELA, feiticeira)
 
         estado_voo = "Voando" if maga.voando else "No chão"
+
         texto_estado = fonte_menor.render(
             f"Estado da maga: {estado_voo}",
             True,
             BRANCO
         )
-        TELA.blit(texto_estado, (20, 60))
+
+        TELA.blit(texto_estado, (20, 90))
 
     pygame.display.flip()
 

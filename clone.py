@@ -1,3 +1,4 @@
+
 from pathlib import Path
 import pygame
 import math
@@ -12,7 +13,8 @@ class Feiticeira(Entidade):
         base_dir = Path(__file__).resolve().parent
         pasta_imagens = base_dir / "imagens" / "Personagens"
 
-        self.vida = 3
+        self.vida = 11
+        self.vida_maxima = 11
 
         self.spritesheet_voando = pygame.image.load(
             str(pasta_imagens / "CloneFly.png")
@@ -61,7 +63,6 @@ class Feiticeira(Entidade):
         agora = pygame.time.get_ticks()
         self.tempo_voo += 0.06
 
-        # Atualiza a animação de voo.
         self.tempo_animacao += 1
 
         if self.tempo_animacao >= 30:
@@ -71,9 +72,10 @@ class Feiticeira(Entidade):
 
             self.tempo_animacao = 0
 
-        self.imagem_original = self.frames_voando[self.quadro_atual]
+        self.imagem_original = self.frames_voando[
+            self.quadro_atual
+        ]
 
-        # Mantém a clone no lado oposto ao da Frieren.
         if maga.voando:
             if maga.rect.centerx > LARGURA // 2:
                 alvo_x = self.limite_esquerdo
@@ -85,7 +87,6 @@ class Feiticeira(Entidade):
             elif self.rect.x > alvo_x:
                 self.rect.x -= self.velocidade
 
-            # Alterna entre o canto superior e o inferior.
             if agora - self.ultimo_canto >= 1500:
                 self.canto_atual = 1 - self.canto_atual
                 self.ultimo_canto = agora
@@ -101,7 +102,6 @@ class Feiticeira(Entidade):
                 self.rect.y -= self.velocidade
 
         else:
-            # No chão, a clone flutua de um lado para o outro.
             if maga.rect.centerx < LARGURA // 2:
                 alvo_x = self.limite_direito
             else:
@@ -116,6 +116,4 @@ class Feiticeira(Entidade):
                 180 + math.sin(self.tempo_voo) * 25
             )
 
-        # Aplica a direção sem espelhar uma imagem já espelhada.
         self.mudar_direcao()
-
