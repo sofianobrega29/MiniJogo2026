@@ -15,6 +15,8 @@ RELOGIO = pygame.time.Clock()
 
 fundo_primeira_pessoa = pygame.image.load("imagens/Fundo/Arena.png").convert()
 fundo_terceira_pessoa = pygame.image.load("imagens/Fundo/ParedeArena2D.jpeg")
+vida = pygame.image.load("imagens/UI/vida.png").convert_alpha()
+vida = pygame.transform.scale(vida, (60, 40))
 
 fundo_primeira_pessoa = pygame.transform.scale(fundo_primeira_pessoa, (LARGURA, ALTURA))
 fundo_terceira_pessoa = pygame.transform.scale(fundo_terceira_pessoa, (LARGURA, ALTURA - 120))
@@ -101,6 +103,13 @@ rodando = True
 while rodando:
     RELOGIO.tick(60)
 
+    if maga.rect.centerx < feiticeira.rect.centerx:
+        maga.direcao = "direita"
+        feiticeira.direcao = "esquerda"
+    else:
+        maga.direcao = "esquerda"
+        feiticeira.direcao = "direita"
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             rodando = False
@@ -109,7 +118,8 @@ while rodando:
             if event.key == pygame.K_f and not modo_feitico:
                 modo_feitico = True
                 pontos_magicos = []
-        
+
+
             if event.key == pygame.K_w or event.key == pygame.K_UP:
                 if maga.no_chao and not maga.voando:
                     # Primeiro W: pula.

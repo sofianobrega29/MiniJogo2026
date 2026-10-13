@@ -21,10 +21,6 @@ class Maga (Entidade):
         self.spritesheet_andando = pygame.image.load(str(pasta_imagens / "FrierenWalk.png")).convert_alpha()
         self.spritesheet_voando = pygame.image.load(str(pasta_imagens / "FrierenFly.png")).convert_alpha()
 
-        self.sprite_parada_chao = pygame.transform.flip(self.sprite_parada_chao, True, False)
-        self.spritesheet_andando = pygame.transform.flip(self.spritesheet_andando, True, False)
-        self.spritesheet_voando = pygame.transform.flip(self.spritesheet_voando, True, False)
-
         self.sprite_parada_chao = pygame.transform.scale_by(self.sprite_parada_chao, 3)
 
         self.frames_voando = []
@@ -61,12 +57,20 @@ class Maga (Entidade):
         self.gravidade = 0.7
         self.forca_pulo = -14
 
+        self.direcao = None
+
         self.tempo_voo = 0
         self.tempo_andar = 0
         self.altura_base = y
 
-    
+    def mudar_direcao(self):
+        if self.direcao == "direita":
+            self.image = pygame.transform.flip(self.imagem_original, True, False)
+        else: 
+            self.image = self.imagem_original
+        
     def update(self, tela):
+        
         teclas = pygame.key.get_pressed()
 
         movendo = (
@@ -139,6 +143,9 @@ class Maga (Entidade):
                 self.pulando = False
             else:
                 self.no_chao = False
+
+        self.imagem_original = self.image
+        self.mudar_direcao()
 
         self.rect.clamp_ip(tela.get_rect())
 
