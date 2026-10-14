@@ -1,180 +1,257 @@
 from pathlib import Path
 import math
 import random
+
 import pygame
-from constantes import *
-from frieren import Entidade
-from elementos import RajadaZoltraak, ParedeMagica
+
+from constantes import LARGURA, ALTURA
+from entidade import Combatente
+from feiticos import limitar
 
 
-class Cloneataque:
-    def __init__(self, origem, alvo, velocidade=6):
-        self.posicao = pygame.Vector2(origem)
-        direcao = pygame.Vector2(alvo) - self.posicao
-        self.direcao = direcao.normalize() if direcao.length_squared() else pygame.Vector2(1, 0)
-        self.velocidade = velocidade
-        self.dano = 1
-        self.raio = 9
-        self.rect = pygame.Rect(0, 0, self.raio*2, self.raio*2)
-        self._atualizar_rect()
+def interpolar(facil, dificil, dificuldade):
+    return facil + (dificil - facil) * dificuldade
 
-    def _atualizar_rect(self):
-        self.rect.center = (int(self.posicao.x), int(self.posicao.y))
 
-    def update(self):
-        self.posicao += self.direcao * self.velocidade
-        self._atualizar_rect()
+class Feiticeira(Combatente):
+    """O clone da Maga: faz tudo o que a Frieren faz, mas de forma automática.
 
-    def desenhar(self, tela):
-        pygame.draw.circle(tela, (190, 50, 255), self.rect.center, self.raio)
-        pygame.draw.circle(tela, (240, 200, 255), self.rect.center, 4)
+    Quanto menos vida ela tem, maior a `dificuldade` (de 0 a 1) e mais ela:
+        - ataca rápido e com mira melhor;
+        - desvia dos feitiços da Maga;
+        - usa a parede mágica para se defender;
+        - libera mais feitiços (raio com 8 vidas, zoltraak com 5).
 
-class Feiticeira(Entidade):
-    def __init__(self, x, y, audio=None):
-        super().__init__(x, y)
-        self.audio = audio
-        base_dir = Path(__file__).resolve().parent
-        pasta_imagens = base_dir / "imagens" / "Personagens"
-        self.vida = 11
-        self.vida_maxima = 11
-        self.projeteis = []
-        self.rajadas = []
-        self.paredes = []
-        self.ultimo_zoltraak = 0
-        self.ultima_defesa = 0
-        self.nivel_dificuldade = 0
-        self.ultimo_ataque = pygame.time.get_ticks()
-        self.ultimo_esquiva = 0
-        self.escudo_ate = 0
-        self.spritesheet_voando = pygame.image.load(str(pasta_imagens / "CloneFly.png")).convert_alpha()
+    Os valores de cada nível estão em PARAMETROS, no formato (início, fim):
+    o primeiro vale com a vida cheia e o segundo com 1 de vida.
+    """
+
+    VIDA_MAXIMA = 11
+    VIDA_LIBERA_RAIO = 8
+    VIDA_LIBERA_ZOLTRAAK = 5
+    TEMPO_REGENERACAO = 5000  # ms sem levar dano para recuperar 1 vida
+
+    PARAMETROS = {
+        "intervalo_acao": (2600, 800),   # ms entre um ataque e outro
+        "velocidade": (3.0, 6.5),        # pixels por quadro
+        "chance_desvio": (0.10, 0.70),   # chance de tentar desviar de um feitiço
+        "chance_defesa": (0.0, 0.30),    # chance de erguer a parede (se ela estiver pronta)
+        "erro_mira": (1.0, 0.0),         # 1 = mira bem ruim, 0 = mira perfeita
+        "fator_recarga": (1.6, 0.7),     # multiplica a recarga dos feitiços
+        "tempo_reacao": (450, 120),      # ms entre perceber o perigo e começar a desviar
+    }
+
+    # Quanto cada feitiço pode errar a mira quando o erro_mira é 1.
+    ERRO_MAXIMO = {"orbe": 28, "raio": 170, "zoltraak": 150}  # graus, pixels, pixels
+
+    PESOS_ATAQUE = {"orbe": 5, "raio": 2, "zoltraak": 1.5}
+
+    def __init__(self, x, y):
+        super().__init__(x, y, vida_maxima=self.VIDA_MAXIMA)
+        self.dano_maximo = 1  # os feitiços do clone tiram no máximo 1 vida da Maga
+
+        pasta_imagens = Path(__file__).resolve().parent / "imagens" / "Personagens"
+        spritesheet = pygame.image.load(str(pasta_imagens / "CloneFly.png")).convert_alpha()
+
         self.frames_voando = []
+
         for i in range(3):
-            quadro = self.spritesheet_voando.subsurface((i * 48, 0, 44, 64)).copy()
-            self.frames_voando.append(pygame.transform.scale_by(quadro, 3))
+            quadro = spritesheet.subsurface((i * 48, 0, 44, 64)).copy()
+            largura, altura = quadro.get_size()
+            self.frames_voando.append(
+                pygame.transform.scale(quadro, (largura * 3, altura * 3))
+            )
+
+        self.direcao = "esquerda"
         self.tempo_animacao = 0
         self.quadro_atual = 0
-        self.direcao = "esquerda"
-        self.velocidade = 2.5
         self.tempo_voo = 0
         self.canto_atual = 0
-        self.ultimo_canto = pygame.time.get_ticks()
+        self.ultimo_canto = 0
+        self.ultimo_dano = 0
+
         self.limite_esquerdo = 80
         self.limite_direito = LARGURA - 140
         self.limite_superior = 100
         self.limite_inferior = ALTURA - 220
-        self.imagem_original = self.frames_voando[0]
-        self.image = self.imagem_original
-        self.rect = self.image.get_rect(topleft=(x, y))
-        self.mudar_direcao()
 
-    @property
-    def vidas_perdidas(self):
-        return self.vida_maxima - self.vida
+        self.proxima_acao = 1500
+        self.desvio = None            # (x, y) de destino do desvio atual
+        self.desvio_inicio = 0
+        self.desvio_fim = 0
+        self._avaliados = set()       # feitiços inimigos a que já reagiu
 
+        self.definir_imagem(self.frames_voando[0])
+        self.rect.topleft = (x, y)
+
+    # ---- dificuldade ---------------------------------------------------
     @property
     def dificuldade(self):
-        # Progresso em etapas: cada vida perdida desbloqueia ou melhora habilidades.
-        return self.vidas_perdidas
+        """0 com a vida cheia, 1 com 1 de vida."""
+        if self.vida_maxima <= 1:
+            return 1.0
 
-    def atributos_dificuldade(self):
-        perdidas = self.vidas_perdidas
-        return {
-            "velocidade": 2.0 + min(perdidas, 10) * 0.35,
-            "intervalo_ataque": max(480, 1700 - perdidas * 105),
-            "velocidade_projetil": 4.0 + perdidas * 0.45,
-            "chance_esquiva": min(0.08 + max(0, perdidas - 1) * 0.075, 0.72),
-            "chance_defesa": min(max(0, perdidas - 2) * 0.09, 0.55),
-            "chance_zoltraak": min(max(0, perdidas - 1) * 0.10, 0.65),
-            "intervalo_zoltraak": max(1600, 4200 - perdidas * 220),
-        }
+        return limitar((self.vida_maxima - self.vida) / (self.vida_maxima - 1), 0.0, 1.0)
 
-    def mudar_direcao(self):
-        self.image = pygame.transform.flip(self.imagem_original, True, False) if self.direcao == "direita" else self.imagem_original
+    def valor(self, nome):
+        facil, dificil = self.PARAMETROS[nome]
+        return interpolar(facil, dificil, self.dificuldade)
 
-    def defender(self, agora, maga, atributos):
-        # Defesa desbloqueada depois de perder 3 vidas; chance aumenta por etapa.
-        if (self.vidas_perdidas >= 3 and agora - self.ultima_defesa >= 1800
-                and random.random() < atributos["chance_defesa"]):
-            self.escudo_ate = agora + 900
-            self.ultima_defesa = agora
+    def feiticos_liberados(self):
+        liberados = ["orbe"]
 
-    def update(self, maga, ataques_jogador=None):
-        agora = pygame.time.get_ticks()
-        atributos = self.atributos_dificuldade()
-        dificuldade = self.vidas_perdidas
-        self.tempo_voo += 0.06 + dificuldade * 0.012
+        if self.vida <= self.VIDA_LIBERA_RAIO:
+            liberados.append("raio")
+
+        if self.vida <= self.VIDA_LIBERA_ZOLTRAAK:
+            liberados.append("zoltraak")
+
+        return liberados
+
+    # ---- ciclo principal -----------------------------------------------
+    def ao_receber_dano(self, agora):
+        self.ultimo_dano = agora
+        self.proxima_acao = max(self.proxima_acao, agora + 400)  # pequena pausa ao ser atingida
+
+    def update(self, ctx):
+        self.tempo_voo += 0.06
+
+        self._regenerar(ctx.tempo)
+        self._animar()
+        self._reagir_a_ameacas(ctx)
+        self._atacar(ctx)
+        self._mover(ctx)
+        self.mudar_direcao()
+
+    def _regenerar(self, agora):
+        if self.vida < self.vida_maxima and agora - self.ultimo_dano >= self.TEMPO_REGENERACAO:
+            self.vida += 1
+            self.ultimo_dano = agora
+
+    def _animar(self):
         self.tempo_animacao += 1
-        self.velocidade = atributos["velocidade"]
-        self.cooldown_ataque = atributos["intervalo_ataque"]
 
-        # Esquiva só começa a ser relevante após a primeira vida perdida.
-        if ataques_jogador and agora - self.ultimo_esquiva > max(350, 900 - dificuldade * 45):
-            for ataque in ataques_jogador:
-                if not getattr(ataque, "explodindo", False) and self.rect.inflate(100, 90).colliderect(ataque.rect):
-                    if random.random() < atributos["chance_esquiva"]:
-                        self.rect.x += -95 if maga.rect.centerx > self.rect.centerx else 95
-                        self.rect.y += random.choice((-65, 65))
-                        self.rect.clamp_ip(pygame.Rect(20, 40, LARGURA-40, ALTURA-180))
-                        self.ultimo_esquiva = agora
-                    break
-
-        if agora >= self.escudo_ate:
-            self.defender(agora, maga, atributos)
-
-        # Ataque básico: disponível desde o início, ficando gradualmente mais rápido.
-        if agora - self.ultimo_ataque >= self.cooldown_ataque:
-            self.projeteis.append(
-                Cloneataque(
-                    self.rect.center,
-                    maga.rect.center,
-                    atributos["velocidade_projetil"]
-                )
-            )
-            if self.audio:
-                self.audio.tocar_efeito("disparo_inimiga")
-            self.ultimo_ataque = agora
-
-        # Zoltraak desbloqueia após perder 2 vidas. A probabilidade é independente
-        # do ataque básico: ela pode conjurar, mas não é obrigada a fazê-lo.
-        if (dificuldade >= 2 and agora - self.ultimo_zoltraak >= atributos["intervalo_zoltraak"]
-                and random.random() < atributos["chance_zoltraak"]):
-            self.rajadas.append(RajadaZoltraak(self.rect.center, maga.rect.center,
-                                               velocidade=9 + max(0, dificuldade - 2) * 0.9))
-            self.ultimo_zoltraak = agora
-
-        if self.tempo_animacao >= max(5, int(30 - dificuldade * 18)):
+        if self.tempo_animacao >= 30:
             self.quadro_atual = (self.quadro_atual + 1) % len(self.frames_voando)
             self.tempo_animacao = 0
-        self.imagem_original = self.frames_voando[self.quadro_atual]
+
+        self.definir_imagem(self.frames_voando[self.quadro_atual])
+
+    # ---- ataque --------------------------------------------------------
+    def _atacar(self, ctx):
+        if ctx.tempo < self.proxima_acao:
+            return
+
+        escolhido = self._escolher_feitico(ctx.tempo)
+
+        if escolhido is None:
+            self.proxima_acao = ctx.tempo + 300
+            return
+
+        erro = random.uniform(-1, 1) * self.ERRO_MAXIMO[escolhido] * self.valor("erro_mira")
+        self.conjurar(escolhido, ctx, self.valor("fator_recarga"), erro)
+
+        intervalo = self.valor("intervalo_acao") * random.uniform(0.8, 1.25)
+        self.proxima_acao = ctx.tempo + int(intervalo)
+
+    def _escolher_feitico(self, agora):
+        opcoes = [
+            nome
+            for nome in self.feiticos_liberados()
+            if self.pode_conjurar(nome, agora)
+        ]
+
+        if not opcoes:
+            return None
+
+        pesos = [self.PESOS_ATAQUE[nome] for nome in opcoes]
+        return random.choices(opcoes, weights=pesos)[0]
+
+    # ---- defesa e desvio -----------------------------------------------
+    def _reagir_a_ameacas(self, ctx):
+        self._avaliados = {f for f in self._avaliados if f.ativo}
+
+        for feitico in ctx.feiticos:
+            if feitico.dono is self or not feitico.ativo or feitico in self._avaliados:
+                continue
+
+            fuga = feitico.ameaca_para(self, ctx)
+
+            if fuga is None:
+                continue
+
+            # Cada feitiço só é avaliado uma vez: ou ela reage, ou deixa passar.
+            self._avaliados.add(feitico)
+            self._decidir_reacao(feitico, fuga, ctx)
+
+    def _decidir_reacao(self, feitico, fuga, ctx):
+        if feitico.BLOQUEAVEL and self.pode_conjurar("parede", ctx.tempo):
+            if random.random() < self.valor("chance_defesa"):
+                self.conjurar("parede", ctx, self.valor("fator_recarga"))
+                return
+
+        if random.random() < self.valor("chance_desvio"):
+            self._iniciar_desvio(fuga, ctx.tempo)
+
+    def _iniciar_desvio(self, fuga, agora):
+        distancia = 210
+        melhor = None
+
+        # Testa fugir para o lado indicado e para o oposto; fica com o que dá mais espaço.
+        for sinal in (1, -1):
+            x = limitar(self.rect.x + fuga[0] * distancia * sinal, self.limite_esquerdo, self.limite_direito)
+            y = limitar(self.rect.y + fuga[1] * distancia * sinal, self.limite_superior, self.limite_inferior)
+            deslocamento = math.hypot(x - self.rect.x, y - self.rect.y)
+
+            if sinal == 1 and deslocamento >= distancia * 0.6:
+                melhor = (x, y, deslocamento)
+                break
+
+            if melhor is None or deslocamento > melhor[2]:
+                melhor = (x, y, deslocamento)
+
+        self.desvio = (melhor[0], melhor[1])
+        self.desvio_inicio = agora + int(self.valor("tempo_reacao"))
+        self.desvio_fim = self.desvio_inicio + 900
+
+    # ---- movimento -----------------------------------------------------
+    def _mover(self, ctx):
+        velocidade = self.valor("velocidade")
+
+        if self.desvio is not None:
+            if ctx.tempo >= self.desvio_fim:
+                self.desvio = None
+            elif ctx.tempo >= self.desvio_inicio:
+                # Chega ao ponto de desvio e fica lá até o perigo passar.
+                self._ir_para(self.desvio[0], self.desvio[1], velocidade * 2.2)
+                return
+
+        self._mover_normal(ctx, velocidade)
+
+    def _mover_normal(self, ctx, velocidade):
+        maga = self.oponente
+        agora = ctx.tempo
 
         if maga.voando:
             alvo_x = self.limite_esquerdo if maga.rect.centerx > LARGURA // 2 else self.limite_direito
-            alvo_y = self.limite_superior if self.canto_atual == 0 else self.limite_inferior
-            if agora - self.ultimo_canto >= max(500, 1500 - int(dificuldade * 700)):
+
+            if agora - self.ultimo_canto >= 1500:
                 self.canto_atual = 1 - self.canto_atual
                 self.ultimo_canto = agora
+
+            alvo_y = self.limite_superior if self.canto_atual == 0 else self.limite_inferior
         else:
             alvo_x = self.limite_direito if maga.rect.centerx < LARGURA // 2 else self.limite_esquerdo
-            alvo_y = int(180 + math.sin(self.tempo_voo) * 25)
+            alvo_y = 180 + math.sin(self.tempo_voo) * 25
 
-        if self.rect.x < alvo_x: self.rect.x = min(alvo_x, self.rect.x + int(self.velocidade + 1))
-        elif self.rect.x > alvo_x: self.rect.x = max(alvo_x, self.rect.x - int(self.velocidade + 1))
-        if self.rect.y < alvo_y: self.rect.y = min(alvo_y, self.rect.y + int(self.velocidade + 1))
-        elif self.rect.y > alvo_y: self.rect.y = max(alvo_y, self.rect.y - int(self.velocidade + 1))
-        self.rect.clamp_ip(pygame.Rect(20, 40, LARGURA-40, ALTURA-180))
-        self.mudar_direcao()
+        self._ir_para(alvo_x, alvo_y, velocidade)
 
-    def desenhar_escudo(self, tela):
-        if pygame.time.get_ticks() < self.escudo_ate:
-            pygame.draw.ellipse(tela, (190, 80, 255), self.rect.inflate(32, 30), 4)
+    def _ir_para(self, x, y, velocidade):
+        """Anda em direção ao ponto (x, y). Devolve True quando chega."""
+        passo_x = limitar(x - self.rect.x, -velocidade, velocidade)
+        passo_y = limitar(y - self.rect.y, -velocidade, velocidade)
 
-    def atualizar_magias(self, maga):
-        for rajada in self.rajadas[:]:
-            rajada.update(maga)
-            if not rajada.ativo:
-                self.rajadas.remove(rajada)
+        self.rect.x += int(round(passo_x))
+        self.rect.y += int(round(passo_y))
 
-    def desenhar_magias(self, tela):
-        for rajada in self.rajadas:
-            rajada.desenhar(tela)
-        self.desenhar_escudo(tela)
+        return abs(x - self.rect.x) < 6 and abs(y - self.rect.y) < 6

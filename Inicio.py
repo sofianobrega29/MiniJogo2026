@@ -1,3 +1,8 @@
+<<<<<<< Updated upstream
+=======
+
+import os
+>>>>>>> Stashed changes
 from pathlib import Path
 import math
 import os
@@ -5,6 +10,7 @@ import tempfile
 
 import numpy as np
 import pygame
+<<<<<<< Updated upstream
 from moviepy import VideoFileClip
 
 from constantes import *
@@ -44,6 +50,15 @@ audio = SistemaSonoro()
 audio.iniciar_musica()
 audio.diminuir_volume()
 
+=======
+from constantes import LARGURA, ALTURA
+from jogo import Jogo
+
+os.chdir(Path(__file__).resolve().parent)
+
+pygame.init()
+
+>>>>>>> Stashed changes
 TELA = pygame.display.set_mode((LARGURA, ALTURA))
 pygame.display.set_caption("Confronto Mágico")
 
@@ -190,6 +205,7 @@ def desenhar_chao(tela):
         (0, CHAO_Y, LARGURA, 120)
     )
 
+<<<<<<< Updated upstream
     for x in range(0, LARGURA, 60):
         pygame.draw.line(
             tela,
@@ -197,6 +213,107 @@ def desenhar_chao(tela):
             (x, CHAO_Y),
             (x, ALTURA),
             2
+=======
+    pygame.draw.circle(TELA, ROXO, (100, 120), 5)
+    pygame.draw.circle(TELA, ROXO_CLARO, (1180, 180), 4)
+    pygame.draw.circle(TELA, ROXO, (1080, 720), 6)
+    pygame.draw.circle(TELA, ROXO_CLARO, (180, 760), 4)
+
+    pygame.draw.circle(
+        TELA,
+        ROXO,
+        (LARGURA // 2, 300),
+        150,
+        2
+    )
+
+    pygame.draw.circle(
+        TELA,
+        ROXO_CLARO,
+        (LARGURA // 2, 300),
+        125,
+        2
+    )
+
+    pygame.draw.polygon(
+        TELA,
+        ROXO,
+        [
+            (LARGURA // 2, 120),
+            (LARGURA // 2 + 20, 280),
+            (LARGURA // 2, 300),
+            (LARGURA // 2 - 20, 280)
+        ],
+        2
+    )
+
+
+def desenhar_texto(texto, fonte, cor, centro):
+    imagem = fonte.render(texto, True, cor)
+    retangulo = imagem.get_rect(center=centro)
+    TELA.blit(imagem, retangulo)
+
+
+def desenhar_botao(texto, retangulo, mouse):
+    cor = ROXO_CLARO if retangulo.collidepoint(mouse) else ROXO
+
+    pygame.draw.rect(
+        TELA,
+        cor,
+        retangulo,
+        border_radius=14
+    )
+
+    pygame.draw.rect(
+        TELA,
+        BRANCO,
+        retangulo,
+        width=2,
+        border_radius=14
+    )
+
+    desenhar_texto(
+        texto,
+        fonte_botao,
+        BRANCO,
+        retangulo.center
+    )
+
+
+def tela_inicial():
+    botoes = {
+        "jogar": pygame.Rect(LARGURA // 2 - 170, 510, 340, 70),
+        "instrucoes": pygame.Rect(LARGURA // 2 - 170, 600, 340, 70),
+        "sair": pygame.Rect(LARGURA // 2 - 170, 690, 340, 70)
+    }
+
+    while True:
+        RELOGIO.tick(60)
+        mouse = pygame.mouse.get_pos()
+
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                return "sair"
+
+            if evento.type == pygame.MOUSEBUTTONDOWN:
+                if evento.button == 1:
+                    if botoes["jogar"].collidepoint(evento.pos):
+                        return "jogar"
+
+                    if botoes["instrucoes"].collidepoint(evento.pos):
+                        return "instrucoes"
+
+                    if botoes["sair"].collidepoint(evento.pos):
+                        return "sair"
+
+        desenhar_fundo()
+
+        desenhar_texto(
+            "CONFRONTO",
+            fonte_titulo,
+            BRANCO,
+            (LARGURA // 2, 180)
+>>>>>>> Stashed changes
         )
 
     for y in range(CHAO_Y, ALTURA, 40):
@@ -227,8 +344,15 @@ def reconhecer_simbolo(pontos):
     xs = [p[0] for p in pontos]
     ys = [p[1] for p in pontos]
 
+<<<<<<< Updated upstream
     largura = max(xs) - min(xs)
     altura = max(ys) - min(ys)
+=======
+            if evento.type == pygame.MOUSEBUTTONDOWN:
+                if evento.button == 1:
+                    if botao_voltar.collidepoint(evento.pos):
+                        return "voltar"
+>>>>>>> Stashed changes
 
     if largura < 45 or altura < 35:
         return None
@@ -238,6 +362,7 @@ def reconhecer_simbolo(pontos):
     percurso = comprimento_traco(pontos)
     proporcao = largura / max(altura, 1)
 
+<<<<<<< Updated upstream
     if fechamento > diagonal * 0.20 and largura > altura * 1.15:
         segmentos = [
             pontos[0],
@@ -252,6 +377,21 @@ def reconhecer_simbolo(pontos):
             and segmentos[2][1] < segmentos[3][1]
         ):
             return "raio"
+=======
+        instrucoes = [
+            ("A / D ou setas", "Mover a maga"),
+            ("W ou seta para cima", "Pular (de novo no ar: voar)"),
+            ("S ou seta para baixo", "Descer; ao tocar o chão, ela pousa"),
+            ("F", "Modo de feitiço (F ou ESC cancela)"),
+            ("Círculo", "Orbe explosivo: explode no chão, parede ou clone"),
+            ("Quadrado", "Parede mágica de defesa"),
+            ("Estrela", "Zoltraak: portal que dispara uma rajada"),
+            ("Letra Z", "Raio roxo que cai do céu"),
+            ("Objetivo", "Zere as 11 vidas da clone sem perder as suas 3")
+        ]
+
+        y = 240
+>>>>>>> Stashed changes
 
         if (
             segmentos[0][1] > segmentos[1][1]
@@ -263,8 +403,12 @@ def reconhecer_simbolo(pontos):
         if abs(pontos[0][1] - pontos[-1][1]) < altura * 0.45:
             return "raio"
 
+<<<<<<< Updated upstream
     if fechamento > diagonal * 0.25:
         return None
+=======
+            y += 55
+>>>>>>> Stashed changes
 
     razao_percurso = percurso / max(diagonal, 1)
 
@@ -342,6 +486,7 @@ while rodando:
     dt = RELOGIO.tick(60)
     agora = pygame.time.get_ticks()
 
+<<<<<<< Updated upstream
     if maga.rect.centerx < feiticeira.rect.centerx:
         maga.direcao = "direita"
         feiticeira.direcao = "esquerda"
@@ -351,6 +496,17 @@ while rodando:
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
+=======
+    if escolha == "jogar":
+        # Se a janela for fechada durante a partida, o programa inteiro encerra.
+        if Jogo(TELA, RELOGIO).executar() == "sair":
+            rodando = False
+
+    elif escolha == "instrucoes":
+        resultado = tela_instrucoes()
+
+        if resultado == "sair":
+>>>>>>> Stashed changes
             rodando = False
             break
 

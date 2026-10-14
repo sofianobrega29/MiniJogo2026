@@ -1,52 +1,45 @@
 from pathlib import Path
-import pygame
 import math
-from constantes import *
+
+import pygame
+
+from constantes import Y_PES_CHAO
+from entidade import Combatente
 
 
-class Entidade(pygame.sprite.Sprite):
+class Maga(Combatente):
+    """Frieren, controlada pelo jogador."""
+
+    VELOCIDADE_ANDAR = 5
+    VELOCIDADE_VOO = 4
+
     def __init__(self, x, y):
-        super().__init__()
-        self.image = pygame.Surface((60, 80), pygame.SRCALPHA)
-        self.rect = self.image.get_rect(topleft=(x, y))
+        """x, y = posição dos pés (meio da base do sprite)."""
+        super().__init__(x, y, vida_maxima=3)
 
-
-class Maga(Entidade):
-    def __init__(self, x, y):
-        super().__init__(x, y)
-
-        self.vida = 3
-
-        base_dir = Path(__file__).resolve().parent
-        pasta_imagens = base_dir / "imagens" / "Personagens"
+        pasta_imagens = Path(__file__).resolve().parent / "imagens" / "Personagens"
 
         self.sprite_parada_chao = pygame.image.load(
             str(pasta_imagens / "FrierenIdle.png")
         ).convert_alpha()
-
-        self.spritesheet_andando = pygame.image.load(
+        spritesheet_andando = pygame.image.load(
             str(pasta_imagens / "FrierenWalk.png")
         ).convert_alpha()
-
-        self.spritesheet_voando = pygame.image.load(
+        spritesheet_voando = pygame.image.load(
             str(pasta_imagens / "FrierenFly.png")
         ).convert_alpha()
 
-        self.sprite_parada_chao = pygame.transform.scale_by(
-            self.sprite_parada_chao, 3
-        )
+        self.sprite_parada_chao = self._ampliar(self.sprite_parada_chao)
 
         self.frames_voando = []
         self.frames_andando = []
 
         for i in range(3):
-            quadro = self.spritesheet_voando.subsurface(
-                (i * 48, 0, 44, 64)
-            ).copy()
-            quadro = pygame.transform.scale_by(quadro, 3)
-            self.frames_voando.append(quadro)
+            quadro = spritesheet_voando.subsurface((i * 48, 0, 44, 64)).copy()
+            self.frames_voando.append(self._ampliar(quadro))
 
         for i in range(5):
+<<<<<<< Updated upstream
             quadro = self.spritesheet_andando.subsurface(
                 (i * 50, 0, 50, 60)
             ).copy()
@@ -62,15 +55,17 @@ class Maga(Entidade):
             self.rect.width - 30,
             self.rect.height - 20
         )
+=======
+            quadro = spritesheet_andando.subsurface((i * 50, 0, 50, 60)).copy()
+            self.frames_andando.append(self._ampliar(quadro))
+>>>>>>> Stashed changes
 
         self.tempo_animacao_voo = 0
         self.tempo_animacao_andar = 0
-
         self.animacao_atual = None
         self.animacao_anterior = None
         self.quadro_atual = 0
 
-        self.contagem_w = 0
         self.no_chao = True
         self.pulando = False
         self.voando = False
@@ -79,71 +74,86 @@ class Maga(Entidade):
         self.gravidade = 0.7
         self.forca_pulo = -14
 
-        self.direcao = None
-
         self.tempo_voo = 0
-        self.tempo_andar = 0
-        self.altura_base = y
 
-        # Controle dos toques na tecla W
-        self.ultimo_toque_w = 0
-        self.intervalo_toque_w = 350
+        self.rect = self.image.get_rect(midbottom=(x, y))
+        self.definir_imagem(self.sprite_parada_chao)
+        self.rect.midbottom = (x, y)
 
-    def mudar_direcao(self):
-        if self.direcao == "direita":
-            self.image = pygame.transform.flip(
-                self.imagem_original, True, False
-            )
-        else:
-            self.image = self.imagem_original
+    @staticmethod
+    def _ampliar(imagem, fator=3):
+        largura, altura = imagem.get_size()
+        return pygame.transform.scale(imagem, (largura * fator, altura * fator))
 
-
-    def tratar_evento(self, evento):
-        if evento.type != pygame.KEYDOWN:
-            return
-
-        if evento.key not in (pygame.K_w, pygame.K_UP):
-            return
-
-        agora = pygame.time.get_ticks()
-
+    # ---- controles -----------------------------------------------------
+    def pressionar_cima(self):
+        """Tecla W/seta para cima: pula no chão e, no ar, começa a voar."""
         if self.voando:
-            if (
-                self.ultimo_toque_w != 0
-                and agora - self.ultimo_toque_w < 500
-            ):
-                self.voando = False
-                self.pulando = True
-                self.no_chao = False
-                self.velocidade_y = 0
-                self.ultimo_toque_w = 0
-            else:
-                self.ultimo_toque_w = agora
+            return
 
-        elif self.no_chao:
+        if self.no_chao:
             self.velocidade_y = self.forca_pulo
-            self.pulando = True
             self.no_chao = False
-            self.ultimo_toque_w = 0
-
+            self.pulando = True
         elif self.pulando:
             self.voando = True
             self.pulando = False
+            self.velocidade_y = 0
             self.tempo_voo = 0
-            self.ultimo_toque_w = 0
 
+    def pousar(self):
+        self.voando = False
+        self.pulando = False
+        self.no_chao = True
+        self.velocidade_y = 0
+        self.rect.bottom = Y_PES_CHAO
 
-    def update(self, tela):
+    # ---- atualização ---------------------------------------------------
+    def update(self, ctx):
         teclas = pygame.key.get_pressed()
 
-        movendo = (
-            teclas[pygame.K_a]
-            or teclas[pygame.K_LEFT]
-            or teclas[pygame.K_d]
-            or teclas[pygame.K_RIGHT]
-        )
+        esquerda = teclas[pygame.K_a] or teclas[pygame.K_LEFT]
+        direita = teclas[pygame.K_d] or teclas[pygame.K_RIGHT]
+        cima = teclas[pygame.K_w] or teclas[pygame.K_UP]
+        baixo = teclas[pygame.K_s] or teclas[pygame.K_DOWN]
+        movendo = esquerda or direita
 
-        # Seleciona a animação
+        self._animar(movendo)
+
+        if esquerda:
+            self.rect.x -= self.VELOCIDADE_ANDAR
+
+        if direita:
+            self.rect.x += self.VELOCIDADE_ANDAR
+
+        if self.voando:
+            if cima:
+                self.rect.y -= self.VELOCIDADE_VOO
+
+            if baixo:
+                self.rect.y += self.VELOCIDADE_VOO
+
+            self.rect.y += int(math.sin(self.tempo_voo) * 2)
+
+            # Descendo até o chão, a Maga pousa e volta a andar normalmente.
+            if self.rect.bottom >= Y_PES_CHAO:
+                self.pousar()
+        else:
+            self.velocidade_y += self.gravidade
+            self.rect.y += int(self.velocidade_y)
+
+            if self.rect.bottom >= Y_PES_CHAO:
+                self.rect.bottom = Y_PES_CHAO
+                self.velocidade_y = 0
+                self.no_chao = True
+                self.pulando = False
+            else:
+                self.no_chao = False
+
+        self.mudar_direcao()
+        self.rect.clamp_ip(ctx.area)
+
+    def _animar(self, movendo):
         if self.voando:
             self.animacao_atual = "voar"
         elif movendo:
@@ -155,36 +165,30 @@ class Maga(Entidade):
             self.quadro_atual = 0
             self.animacao_anterior = self.animacao_atual
 
-        # Animação de caminhada
         if self.animacao_atual == "andar":
             self.tempo_animacao_andar += 1
 
             if self.tempo_animacao_andar >= 10:
-                self.quadro_atual = (
-                    self.quadro_atual + 1
-                ) % len(self.frames_andando)
+                self.quadro_atual = (self.quadro_atual + 1) % len(self.frames_andando)
                 self.tempo_animacao_andar = 0
 
-            self.image = self.frames_andando[self.quadro_atual]
+            imagem = self.frames_andando[self.quadro_atual]
 
-        # Animação de voo
         elif self.animacao_atual == "voar":
             self.tempo_animacao_voo += 1
             self.tempo_voo += 0.08
 
             if self.tempo_animacao_voo >= 10:
-                self.quadro_atual = (
-                    self.quadro_atual + 1
-                ) % len(self.frames_voando)
+                self.quadro_atual = (self.quadro_atual + 1) % len(self.frames_voando)
                 self.tempo_animacao_voo = 0
 
-            self.image = self.frames_voando[self.quadro_atual]
+            imagem = self.frames_voando[self.quadro_atual]
 
-        # Animação parada
         else:
-            self.image = self.sprite_parada_chao
+            imagem = self.sprite_parada_chao
             self.quadro_atual = 0
 
+<<<<<<< Updated upstream
         # Movimento horizontal
         if teclas[pygame.K_a] or teclas[pygame.K_LEFT]:
             self.rect.x -= 5
@@ -228,3 +232,6 @@ class Maga(Entidade):
 
         self.rect.clamp_ip(tela.get_rect())
         self.hitbox.midbottom = self.rect.midbottom
+=======
+        self.definir_imagem(imagem)
+>>>>>>> Stashed changes
