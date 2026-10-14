@@ -47,7 +47,7 @@ class Jogo:
     e adicionar_feitico().
     """
 
-    TEMPO_VOLTA_MENU = 6000      # ms na tela final antes de voltar ao menu sozinho
+    TEMPO_VOLTA_MENU = 30000      # ms na tela final antes de voltar ao menu sozinho
     TEMPO_MINIMO_FINAL = 700     # ms em que cliques/teclas são ignorados na tela final
     PAUSAR_MUNDO_NO_CAJADO = True  # True: o tempo para enquanto a Maga desenha o símbolo
 
@@ -58,6 +58,7 @@ class Jogo:
 
         self._carregar_recursos()
         self.reiniciar()
+
 
     # ------------------------------------------------------------------
     # Preparação
@@ -113,18 +114,16 @@ class Jogo:
 
 
     def reiniciar(self):
-        if not hasattr(self, "video_vitoria"):
-            self.video_vitoria = None
-        if self.video_vitoria is not None:
+        if getattr(self, "video_vitoria", None) is not None:
             self.video_vitoria.release()
-            self.video_vitoria = None
+
+        self.video_vitoria = None
 
         self.tempo = 0
         self.tempo_real = 0
         self.estado = Estado.JOGANDO
         self.tempo_no_final = 0
         self.video_tempo = 0
-
 
         self.maga = Maga(230, Y_PES_CHAO)
         self.clone = Feiticeira(950, 180)
@@ -298,6 +297,9 @@ class Jogo:
             self._terminar(Estado.VITORIA)
 
 
+
+
+
     def _terminar(self, estado):
         self.estado = estado
         self.tempo_no_final = 0
@@ -310,7 +312,23 @@ class Jogo:
             self.video_vitoria = cv2.VideoCapture(
                 str(CAMINHO_VIDEO_VITORIA)
             )
-            self.video_tempo = 0
+
+            if not self.video_vitoria.isOpened():
+                print("Erro: não foi possível abrir o vídeo de vitória.")
+                print(f"Caminho: {CAMINHO_VIDEO_VITORIA}")
+                self.video_vitoria = None
+                return
+
+            self.fps_video = self.video_vitoria.get(
+                cv2.CAP_PROP_FPS
+            )
+
+            if self.fps_video <= 0:
+                self.fps_video = 30.0
+
+            self.intervalo_frame = 1000 / self.fps_video
+            self.ultimo_frame_video = 0
+            self.quadro_vitoria = None
 
 
     # ------------------------------------------------------------------
@@ -458,22 +476,52 @@ class Jogo:
             )
 
     # ---- tela final ----------------------------------------------------
-    def _desenhar_tela_final(self):
-        if self.estado == Estado.VITORIA and self.video_vitoria is not None:
-            sucesso, quadro = self.video_vitoria.read()
 
-            if sucesso:
-                quadro = cv2.cvtColor(quadro, cv2.COLOR_BGR2RGB)
-                quadro = pygame.surfarray.make_surface(quadro.swapaxes(0, 1))
-                quadro = pygame.transform.scale(quadro, (LARGURA, ALTURA))
-                self.tela.blit(quadro, (0, 0))
+
+    def _desenhar_tela_final(self):
+        if self.estado == Estado.VITORIA:
+            if self.video_vitoria is not None:
+                agora = pygame.time.get_ticks()
+
+                if (
+                    self.quadro_vitoria is None
+                    or agora - self.ultimo_frame_video >= self.intervalo_frame
+                ):
+                    sucesso, quadro = self.video_vitoria.read()
+                    self.ultimo_frame_video = agora
+
+                    if sucesso:
+                        quadro = cv2.cvtColor(
+                            quadro, cv2.COLOR_BGR2RGB
+                        )
+                        quadro = pygame.surfarray.make_surface(
+                            quadro.swapaxes(0, 1)
+                        )
+                        self.quadro_vitoria = pygame.transform.scale(
+                            quadro, (LARGURA, ALTURA)
+                        )
+                    else:
+                        self.video_vitoria.release()
+                        self.video_vitoria = None
+                        self.quadro_vitoria = None
+
+                if self.quadro_vitoria is not None:
+                    self.tela.blit(self.quadro_vitoria, (0, 0))
+                else:
+                    self.tela.blit(self.capa_vitoria, (0, 0))
             else:
-                self.video_vitoria.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                self.tela.blit(self.capa_vitoria, (0, 0))
+
         else:
             self.tela.blit(self.capa_derrota, (0, 0))
 
+        restante = max(
+            0,
+            math.ceil(
+                (self.TEMPO_VOLTA_MENU - self.tempo_no_final) / 1000
+            )
+        )
 
-        restante = max(0, math.ceil((self.TEMPO_VOLTA_MENU - self.tempo_no_final) / 1000))
         self._texto_com_fundo(
             f"Voltando ao menu em {restante}s...",
             self.fonte_menor,
@@ -481,12 +529,27 @@ class Jogo:
         )
 
         mouse = pygame.mouse.get_pos()
-        cor_botao = ROXO_CLARO if self.botao_menu.collidepoint(mouse) else ROXO
-        pygame.draw.rect(self.tela, cor_botao, self.botao_menu, border_radius=14)
-        pygame.draw.rect(self.tela, BRANCO, self.botao_menu, width=2, border_radius=14)
-        self._texto_centralizado(
-            "VOLTAR AO MENU", self.fonte_botao, BRANCO, self.botao_menu.center
+        cor_botao = (
+            ROXO_CLARO
+            if self.botao_menu.collidepoint(mouse)
+            else ROXO
         )
+
+        pygame.draw.rect(
+            self.tela, cor_botao, self.botao_menu, border_radius=14
+        )
+        pygame.draw.rect(
+            self.tela, BRANCO, self.botao_menu,
+            width=2, border_radius=14
+        )
+
+        self._texto_centralizado(
+            "VOLTAR AO MENU",
+            self.fonte_botao,
+            BRANCO,
+            self.botao_menu.center,
+        )
+
 
     def _texto_centralizado(self, texto, fonte, cor, centro):
         imagem = fonte.render(texto, True, cor)
