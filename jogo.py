@@ -1,411 +1,288 @@
-
+from pathlib import Path
+import math
+import runpy
+import pygame
 from constantes import *
-from elementos import *
+from elementos import Cajado, ProjetilMagico, RajadaZoltraak, ParedeMagica
 from frieren import Maga
 from clone import Feiticeira
 
-import pygame
-import math
-
 pygame.init()
-
+BASE_DIR = Path(__file__).resolve().parent
 TELA = pygame.display.set_mode((LARGURA, ALTURA))
 pygame.display.set_caption("Confronto Mágico")
-
 RELOGIO = pygame.time.Clock()
 
-fundo_primeira_pessoa = pygame.image.load(
-    "imagens/Fundo/Arena.png"
-).convert()
+fundo_primeira_pessoa = pygame.image.load(str(BASE_DIR / "imagens/Fundo/Arena.png")).convert()
+fundo_terceira_pessoa = pygame.image.load(str(BASE_DIR / "imagens/Fundo/ParedeArena2D.jpeg")).convert()
+vida_img = pygame.image.load(str(BASE_DIR / "imagens/UI/vida.png")).convert_alpha()
+vida_img = pygame.transform.scale(vida_img, (45, 30))
+fundo_primeira_pessoa = pygame.transform.scale(fundo_primeira_pessoa, (LARGURA, ALTURA))
+fundo_terceira_pessoa = pygame.transform.scale(fundo_terceira_pessoa, (LARGURA, ALTURA - 120))
 
-fundo_terceira_pessoa = pygame.image.load(
-    "imagens/Fundo/ParedeArena2D.jpeg"
-).convert()
+fonte = pygame.font.SysFont("arial", 54, bold=True)
+fonte_menor = pygame.font.SysFont("arial", 28)
+fonte_pequena = pygame.font.SysFont("arial", 22)
 
-vida = pygame.image.load(
-    "imagens/UI/vida.png"
-).convert_alpha()
-
-vida = pygame.transform.scale(vida, (45, 30))
-
-fundo_primeira_pessoa = pygame.transform.scale(
-    fundo_primeira_pessoa,
-    (LARGURA, ALTURA)
-)
-
-fundo_terceira_pessoa = pygame.transform.scale(
-    fundo_terceira_pessoa,
-    (LARGURA, ALTURA - 120)
-)
+CHAO_Y = ALTURA - 120
+DURACAO_TELA_FINAL = 8000
 
 
 def desenhar_chao(tela):
-    altura_chao = 120
-
-    pygame.draw.rect(
-        tela,
-        (255, 231, 176),
-        (0, ALTURA - altura_chao, LARGURA, altura_chao)
-    )
-
-    tamanho_pedra = 60
-
-    for x in range(0, LARGURA, tamanho_pedra):
-        pygame.draw.line(
-            tela,
-            (45, 42, 50),
-            (x, ALTURA - altura_chao),
-            (x, ALTURA),
-            2
-        )
-
-    for y in range(ALTURA - altura_chao, ALTURA, 40):
-        pygame.draw.line(
-            tela,
-            (45, 42, 50),
-            (0, y),
-            (LARGURA, y),
-            2
-        )
+    pygame.draw.rect(tela, (255, 231, 176), (0, CHAO_Y, LARGURA, 120))
+    for x in range(0, LARGURA, 60):
+        pygame.draw.line(tela, (45, 42, 50), (x, CHAO_Y), (x, ALTURA), 2)
+    for y in range(CHAO_Y, ALTURA, 40):
+        pygame.draw.line(tela, (45, 42, 50), (0, y), (LARGURA, y), 2)
 
 
-def reconhecer_circulo(pontos):
-    if len(pontos) < 20:
-        return False
+def distancia(a, b):
+    return math.hypot(a[0] - b[0], a[1] - b[1])
 
-    inicio = pontos[0]
-    fim = pontos[-1]
 
-    distancia_fechamento = math.hypot(
-        fim[0] - inicio[0],
-        fim[1] - inicio[1]
-    )
+def comprimento_traco(pontos):
+    return sum(distancia(pontos[i-1], pontos[i]) for i in range(1, len(pontos)))
 
-    xs = [ponto[0] for ponto in pontos]
-    ys = [ponto[1] for ponto in pontos]
 
-    largura = max(xs) - min(xs)
-    altura = max(ys) - min(ys)
+def reconhecer_simbolo(pontos):
+    """Retorna circulo, quadrado, estrela, raio ou None."""
+    if len(pontos) < 12:
+        return None
+    xs, ys = [p[0] for p in pontos], [p[1] for p in pontos]
+    largura, altura = max(xs)-min(xs), max(ys)-min(ys)
+    if largura < 45 or altura < 35:
+        return None
+    fechamento = distancia(pontos[0], pontos[-1])
+    diagonal = math.hypot(largura, altura)
+    percurso = comprimento_traco(pontos)
+    proporcao = largura / max(altura, 1)
 
-    if largura < 60 or altura < 60:
-        return False
+    # Raio/Z: traço aberto, largo, com deslocamento vertical considerável.
+    if fechamento > diagonal * 0.20 and largura > altura * 1.15:
+        segmentos = [pontos[0], pontos[len(pontos)//3], pontos[2*len(pontos)//3], pontos[-1]]
+        if segmentos[0][1] < segmentos[1][1] and segmentos[1][1] > segmentos[2][1] and segmentos[2][1] < segmentos[3][1]:
+            return "raio"
+        if segmentos[0][1] > segmentos[1][1] and segmentos[1][1] < segmentos[2][1] and segmentos[2][1] > segmentos[3][1]:
+            return "raio"
+        # O gesto pode ser um Z simples: topo, diagonal e base.
+        if abs(pontos[0][1] - pontos[-1][1]) < altura * 0.45:
+            return "raio"
 
-    proporcao = largura / altura
-
-    if not 0.65 <= proporcao <= 1.35:
-        return False
-
-    if distancia_fechamento > max(largura, altura) * 0.25:
-        return False
-
-    return True
+    if fechamento > diagonal * 0.25:
+        return None
+    razao_percurso = percurso / max(diagonal, 1)
+    if razao_percurso > 3.45:
+        return "estrela"
+    if 0.65 <= proporcao <= 1.45:
+        # Quadrado tem quatro cantos e percurso próximo de 2,8 diagonais;
+        # círculo costuma aproximar-se de 2,2 diagonais.
+        if razao_percurso >= 2.45:
+            return "quadrado"
+        return "circulo"
+    return None
 
 
 def desenhar_vidas_maga(tela, maga):
-    texto = fonte_menor.render(
-        "MAGA",
-        True,
-        BRANCO
-    )
-
-    tela.blit(texto, (20, 15))
-
+    tela.blit(fonte_pequena.render("MAGA", True, BRANCO), (20, 15))
     for i in range(max(0, maga.vida)):
-        tela.blit(vida, (20 + i * 50, 45))
+        tela.blit(vida_img, (20 + i * 50, 45))
 
 
-def desenhar_barra_vida_clone(tela, feiticeira):
-    largura_barra = 350
-    altura_barra = 26
-
-    posicao_x = LARGURA - largura_barra - 30
-    posicao_y = 35
-
-    vidas_atuais = max(
-        0,
-        min(feiticeira.vida, feiticeira.vida_maxima)
-    )
-
-    proporcao_vida = (
-        vidas_atuais / feiticeira.vida_maxima
-        if feiticeira.vida_maxima > 0
-        else 0
-    )
-
-    largura_preenchimento = int(
-        largura_barra * proporcao_vida
-    )
-
-    texto = fonte_menor.render(
-        f"FEITICEIRA CLONE: {vidas_atuais}/{feiticeira.vida_maxima}",
-        True,
-        BRANCO
-    )
-
-    tela.blit(texto, (posicao_x, 5))
-
-    pygame.draw.rect(
-        tela,
-        (45, 35, 55),
-        (posicao_x, posicao_y, largura_barra, altura_barra),
-        border_radius=8
-    )
-
-    if largura_preenchimento > 0:
-        pygame.draw.rect(
-            tela,
-            (180, 50, 220),
-            (
-                posicao_x,
-                posicao_y,
-                largura_preenchimento,
-                altura_barra
-            ),
-            border_radius=8
-        )
-
-    pygame.draw.rect(
-        tela,
-        (230, 210, 240),
-        (posicao_x, posicao_y, largura_barra, altura_barra),
-        width=2,
-        border_radius=8
-    )
+def desenhar_barra_vida_clone(tela, clone):
+    largura, altura = 350, 26
+    x, y = LARGURA - largura - 30, 35
+    vidas = max(0, min(clone.vida, clone.vida_maxima))
+    texto = fonte_pequena.render(f"FEITICEIRA CLONE: {vidas}/{clone.vida_maxima}", True, BRANCO)
+    tela.blit(texto, (x, 5))
+    pygame.draw.rect(tela, (45, 35, 55), (x, y, largura, altura), border_radius=8)
+    if vidas:
+        pygame.draw.rect(tela, (180, 50, 220), (x, y, int(largura * vidas / clone.vida_maxima), altura), border_radius=8)
+    pygame.draw.rect(tela, (230, 210, 240), (x, y, largura, altura), 2, border_radius=8)
 
 
-maga = Maga(150, ALTURA - 200)
-feiticeira = Feiticeira(950, 180)
-cajado = Cajado()
+def novo_jogo():
+    maga = Maga(150, ALTURA - 200)
+    clone = Feiticeira(950, 180)
+    return maga, clone, Cajado()
 
-todos_sprites = pygame.sprite.Group()
-todos_sprites.add(maga, feiticeira)
-
+maga, feiticeira, cajado = novo_jogo()
 modo_feitico = False
 desenhando = False
-
 pontos_magicos = []
 projeteis = []
-
-fonte = pygame.font.SysFont(None, 36)
-fonte_menor = pygame.font.SysFont(None, 28)
-
+rajadas = []
+parede_maga = None
 estado_jogo = "jogando"
+tempo_fim = 0
+botao_menu = pygame.Rect(LARGURA//2 - 170, ALTURA//2 + 45, 340, 60)
 
-
-botao_jogar = pygame.Rect(
-    LARGURA // 2 - 170, ALTURA // 2 + 40, 150, 55
-)
-
-botao_sair = pygame.Rect(
-    LARGURA // 2 + 20, ALTURA // 2 + 40, 150, 55
-)
 rodando = True
-
 while rodando:
-    RELOGIO.tick(60)
+    dt = RELOGIO.tick(60)
+    agora = pygame.time.get_ticks()
 
     if maga.rect.centerx < feiticeira.rect.centerx:
-        maga.direcao = "direita"
-        feiticeira.direcao = "esquerda"
+        maga.direcao, feiticeira.direcao = "direita", "esquerda"
     else:
-        maga.direcao = "esquerda"
-        feiticeira.direcao = "direita"
+        maga.direcao, feiticeira.direcao = "esquerda", "direita"
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             rodando = False
+            break
+
+        if estado_jogo in ("vitoria", "derrota"):
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and botao_menu.collidepoint(event.pos):
+                rodando = False
+            elif event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_ESCAPE, pygame.K_SPACE):
+                rodando = False
             continue
-
-        if estado_jogo != "jogando":
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if estado_jogo == "derrota" and botao_jogar.collidepoint(event.pos):
-                    # Reinicia os personagens e os elementos da partida
-                    maga = Maga(150, ALTURA - 200)
-                    feiticeira = Feiticeira(950, 180)
-                    cajado = Cajado()
-
-                    todos_sprites = pygame.sprite.Group()
-                    todos_sprites.add(maga, feiticeira)
-
-                    modo_feitico = False
-                    desenhando = False
-                    pontos_magicos = []
-                    projeteis = []
-                    estado_jogo = "jogando"
-                elif botao_sair.collidepoint(event.pos):
-                    rodando = False
-            continue
-    
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_f and not modo_feitico:
                 modo_feitico = True
                 pontos_magicos = []
-
-            if event.key in (pygame.K_w, pygame.K_UP):
+            if not modo_feitico and event.key in (pygame.K_w, pygame.K_UP):
                 if maga.no_chao and not maga.voando:
                     maga.velocidade_y = maga.forca_pulo
                     maga.no_chao = False
                     maga.pulando = True
-
                 elif maga.pulando and not maga.voando:
                     maga.voando = True
                     maga.pulando = False
                     maga.velocidade_y = 0
                     maga.tempo_voo = 0
-
-                    print("A maga começou a voar!")
-
-            if not modo_feitico and event.key in (
-                pygame.K_w,
-                pygame.K_UP
-            ):
-                maga.contagem_w += 1
-
-                if maga.contagem_w >= 2 and not maga.voando:
-                    maga.voando = True
-                    print("A maga começou a voar!")
+                elif not maga.voando:
+                    maga.contagem_w += 1
+                    if maga.contagem_w >= 2:
+                        maga.voando = True
+                        maga.tempo_voo = 0
 
         if modo_feitico:
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:
-                    desenhando = True
-                    pontos_magicos = [event.pos]
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                desenhando = True
+                pontos_magicos = [event.pos]
+            elif event.type == pygame.MOUSEMOTION and desenhando:
+                pontos_magicos.append(event.pos)
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and desenhando:
+                desenhando = False
+                simbolo = reconhecer_simbolo(pontos_magicos)
+                if simbolo == "circulo":
+                    projeteis.append(ProjetilMagico(maga.rect.center, feiticeira.rect.center, tipo="explosao"))
+                elif simbolo == "quadrado":
+                    parede_maga = ParedeMagica(maga)
+                elif simbolo == "estrela":
+                    rajadas.append(RajadaZoltraak(maga.rect.center, feiticeira.rect.center))
+                elif simbolo == "raio":
+                    # Raio desenhado com Pygame: linha roxa em zigue-zague que atinge o clone.
+                    rajadas.append(RajadaZoltraak(maga.rect.center, feiticeira.rect.center, velocidade=22))
+                    rajadas[-1].tipo_raio = True
+                modo_feitico = False
+                pontos_magicos = []
 
-            elif event.type == pygame.MOUSEMOTION:
-                if desenhando:
-                    pontos_magicos.append(event.pos)
+    if not rodando:
+        break
 
-            elif event.type == pygame.MOUSEBUTTONUP:
-                if event.button == 1 and desenhando:
-                    desenhando = False
-
-                    if reconhecer_circulo(pontos_magicos):
-                        print("Círculo mágico reconhecido!")
-
-                        projeteis.append(
-                            ProjetilMagico(maga.rect.center)
-                        )
-                    else:
-                        print("Símbolo incorreto. Tente novamente.")
-
-                    modo_feitico = False
-                    pontos_magicos = []
-
-    if estado_jogo == "jogando" and not modo_feitico and maga.vida > 0:
-        maga.update(TELA)
-
+    if estado_jogo == "jogando":
+        if parede_maga and not parede_maga.ativa():
+            parede_maga = None
+        if not modo_feitico and maga.vida > 0:
+            maga.update(TELA)
         if feiticeira.vida > 0:
-            feiticeira.update(maga)
+            feiticeira.update(maga, projeteis)
+            feiticeira.atualizar_magias(maga)
 
-    for projetil in (projeteis[:] if estado_jogo == "jogando" else []):
+        for p in projeteis[:]:
+            if pygame.time.get_ticks() < feiticeira.escudo_ate and p.rect.colliderect(feiticeira.rect.inflate(32, 30)):
+                p.ativo = False
+            else:
+                p.update(feiticeira)
+            if not p.ativo:
+                projeteis.remove(p)
+        for r in rajadas[:]:
+            if pygame.time.get_ticks() < feiticeira.escudo_ate and r.rect.colliderect(feiticeira.rect.inflate(32, 30)):
+                r.ativo = False
+            else:
+                r.update(feiticeira)
+            if not r.ativo:
+                rajadas.remove(r)
+
+        for tiro in feiticeira.projeteis[:]:
+            tiro.update()
+            if not TELA.get_rect().colliderect(tiro.rect):
+                feiticeira.projeteis.remove(tiro)
+                continue
+            bloqueado = parede_maga is not None and parede_maga.ativa() and tiro.rect.colliderect(parede_maga.rect)
+            if bloqueado:
+                feiticeira.projeteis.remove(tiro)
+            elif maga.vida > 0 and tiro.rect.colliderect(maga.rect):
+                maga.vida = max(0, maga.vida - tiro.dano)
+                feiticeira.projeteis.remove(tiro)
+
         if feiticeira.vida <= 0:
-            projeteis.remove(projetil)
-            continue
+            feiticeira.vida = 0
+            estado_jogo = "vitoria"
+            tempo_fim = agora
+        elif maga.vida <= 0:
+            maga.vida = 0
+            estado_jogo = "derrota"
+            tempo_fim = agora
 
-        projetil.update(feiticeira)
-
-        if not projetil.ativo:
-            feiticeira.vida -= 1
-            feiticeira.ultimo_dano = pygame.time.get_ticks()
-            projeteis.remove(projetil)
-
-            print("O ataque acertou a inimiga!")
-            print("Vidas restantes:", max(0, feiticeira.vida))
-
-            if feiticeira.vida <= 0:
-                feiticeira.vida = 0
-                feiticeira.kill()
-                estado_jogo = "Vitoria"
-                print("Inimiga derrotada!")
-
-    for tiro_clone in (feiticeira.projeteis[:] if estado_jogo == "jogando" else []):
-        tiro_clone.update()
-
-        if not TELA.get_rect().colliderect(tiro_clone.rect):
-            feiticeira.projeteis.remove(tiro_clone)
-            continue
-
-        if maga.vida > 0 and tiro_clone.rect.colliderect(maga.rect):
-            maga.vida -= tiro_clone.dano
-            feiticeira.projeteis.remove(tiro_clone)
-
-            print("A Maga recebeu dano!")
-            print("Vida restante:", max(0, maga.vida))
-
-            if maga.vida <= 0:
-                maga.vida = 0
-                estado_jogo = "Derrota"
-                print("A Maga foi derrotada!")
-
-    if modo_feitico:
-        TELA.blit(fundo_primeira_pessoa, (0, 0))
-
-        if len(pontos_magicos) > 1:
-            pygame.draw.lines(
-                TELA,
-                AZUL_MAGICO,
-                False,
-                pontos_magicos,
-                5
-            )
-
-        cajado.desenhar(TELA)
-
+    if estado_jogo == "jogando":
+        if modo_feitico:
+            TELA.blit(fundo_primeira_pessoa, (0, 0))
+            if len(pontos_magicos) > 1:
+                pygame.draw.lines(TELA, AZUL_MAGICO, False, pontos_magicos, 5)
+            cajado.desenhar(TELA)
+            dica = fonte_pequena.render("Desenhe: círculo = explosão | quadrado = defesa | estrela = Zoltraak | Z = raio", True, BRANCO)
+            TELA.blit(dica, (20, ALTURA-40))
+        else:
+            TELA.blit(fundo_terceira_pessoa, (0, 0))
+            desenhar_chao(TELA)
+            TELA.blit(maga.image, maga.rect)
+            if feiticeira.vida > 0:
+                TELA.blit(feiticeira.image, feiticeira.rect)
+                feiticeira.desenhar_magias(TELA)
+            for p in projeteis: p.desenhar(TELA)
+            for r in rajadas:
+                if getattr(r, "tipo_raio", False):
+                    # O ataque relâmpago é desenhado proceduralmente, sem precisar de sprite.
+                    inicio = pygame.Vector2(r.posicao)
+                    pontos = [(int(inicio.x), int(inicio.y))]
+                    for i in range(1, 5):
+                        pontos.append((int(inicio.x - r.direcao.x * i * 14 + (18 if i % 2 else -18)), int(inicio.y - r.direcao.y * i * 14)))
+                    pygame.draw.lines(TELA, (150, 45, 255), False, pontos, 9)
+                    pygame.draw.lines(TELA, (235, 210, 255), False, pontos, 3)
+                else:
+                    r.desenhar(TELA)
+            for tiro in feiticeira.projeteis: tiro.desenhar(TELA)
+            if parede_maga and parede_maga.ativa(): parede_maga.desenhar(TELA)
+            desenhar_vidas_maga(TELA, maga)
+            desenhar_barra_vida_clone(TELA, feiticeira)
+            estado_voo = "Voando" if maga.voando else "No chão"
+            TELA.blit(fonte_pequena.render(f"Estado da maga: {estado_voo}", True, BRANCO), (20, 90))
     else:
         TELA.blit(fundo_terceira_pessoa, (0, 0))
         desenhar_chao(TELA)
-
-        todos_sprites.draw(TELA)
-
-        for projetil in projeteis:
-            projetil.desenhar(TELA)
-
-        for tiro_clone in feiticeira.projeteis:
-            tiro_clone.desenhar(TELA)
-
-        desenhar_vidas_maga(TELA, maga)
-        desenhar_barra_vida_clone(TELA, feiticeira)
-
-        estado_voo = "Voando" if maga.voando else "No chão"
-
-        texto_estado = fonte_menor.render(
-            f"Estado da maga: {estado_voo}",
-            True,
-            BRANCO
-        )
-
-        TELA.blit(texto_estado, (20, 90))
-        
-    if estado_jogo in ("derrota", "vitoria"):
-        escurecer = pygame.Surface((LARGURA, ALTURA))
-        escurecer.set_alpha(210)
-        escurecer.fill((10, 10, 20))
-        TELA.blit(escurecer, (0, 0))
-
-        if estado_jogo == "derrota":
-            titulo = fonte.render("FOSTE DERROTADO!", True, (255, 75, 75))
-        else:
-            titulo = fonte.render("VITÓRIA!", True, (80, 255, 130))
-
-        TELA.blit(
-            titulo,
-            titulo.get_rect(center=(LARGURA // 2, ALTURA // 2 - 55))
-        )
-
-       
-        pygame.draw.rect(TELA, (150, 45, 45), botao_sair, border_radius=10)
-        texto_sair = fonte_menor.render("Sair", True, BRANCO)
-        TELA.blit(texto_sair, texto_sair.get_rect(center=botao_sair.center))
-
-      
-        if estado_jogo == "derrota":
-            pygame.draw.rect(TELA, (40, 130, 75), botao_jogar, border_radius=10)
-            texto_jogar = fonte_menor.render("Jogar Novamente", True, BRANCO)
-            TELA.blit(
-                texto_jogar,
-                texto_jogar.get_rect(center=botao_jogar.center)
-            )
+        if maga.vida > 0: TELA.blit(maga.image, maga.rect)
+        if feiticeira.vida > 0: TELA.blit(feiticeira.image, feiticeira.rect)
+        overlay = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
+        overlay.fill((10, 8, 20, 205))
+        TELA.blit(overlay, (0, 0))
+        venceu = estado_jogo == "vitoria"
+        titulo = fonte.render("VITÓRIA!" if venceu else "VOCÊ FOI DERROTADO", True, (100, 255, 150) if venceu else (255, 90, 100))
+        TELA.blit(titulo, titulo.get_rect(center=(LARGURA//2, ALTURA//2 - 70)))
+        subtitulo = fonte_menor.render("Você venceu o clone!" if venceu else "A clone foi mais forte desta vez.", True, BRANCO)
+        TELA.blit(subtitulo, subtitulo.get_rect(center=(LARGURA//2, ALTURA//2 - 15)))
+        cor_botao = (90, 50, 150) if botao_menu.collidepoint(pygame.mouse.get_pos()) else (65, 35, 115)
+        pygame.draw.rect(TELA, cor_botao, botao_menu, border_radius=12)
+        pygame.draw.rect(TELA, (220, 200, 255), botao_menu, 2, border_radius=12)
+        texto = fonte_menor.render("Voltar ao menu", True, BRANCO)
+        TELA.blit(texto, texto.get_rect(center=botao_menu.center))
+        restante = max(0, DURACAO_TELA_FINAL - (agora - tempo_fim))
+        TELA.blit(fonte_pequena.render(f"Retorno automático em {math.ceil(restante/1000)} s", True, BRANCO), (LARGURA//2 - 105, ALTURA//2 + 125))
+        if agora - tempo_fim >= DURACAO_TELA_FINAL:
+            rodando = False
 
     pygame.display.flip()
 
