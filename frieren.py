@@ -56,7 +56,12 @@ class Maga(Entidade):
         self.image = self.sprite_parada_chao
         self.rect = self.image.get_rect(topleft=(x, y))
 
-        self.hitbox = pygame.Rect(0, 0, 30, 40)
+        self.hitbox = pygame.Rect(
+            self.rect.x + 15,
+            self.rect.y + 20,
+            self.rect.width - 30,
+            self.rect.height - 20
+        )
 
         self.tempo_animacao_voo = 0
         self.tempo_animacao_andar = 0
@@ -222,3 +227,4 @@ class Maga(Entidade):
 
 
         self.rect.clamp_ip(tela.get_rect())
+        self.hitbox.midbottom = self.rect.midbottom

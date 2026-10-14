@@ -1,4 +1,3 @@
-#jogo.py
 from pathlib import Path
 import math
 import os
@@ -14,10 +13,32 @@ from frieren import Maga
 from clone import Feiticeira
 from sons import SistemaSonoro
 
-
 pygame.init()
 
 BASE_DIR = Path(__file__).resolve().parent
+
+# Imagens das telas inicial, vitória e derrota
+fundo_vitoria = pygame.image.load(
+    str(BASE_DIR / "imagens" / "capa_vitória.png")
+).convert()
+
+fundo_derrota = pygame.image.load(
+    str(BASE_DIR / "imagens" / "capa_derrota.png")
+).convert()
+
+fundo_inicial = pygame.image.load(
+    str(BASE_DIR / "imagens" / "capa_inicial.png")
+).convert()
+
+fundo_vitoria = pygame.transform.scale(
+    fundo_vitoria, (LARGURA, ALTURA)
+)
+fundo_derrota = pygame.transform.scale(
+    fundo_derrota, (LARGURA, ALTURA)
+)
+fundo_inicial = pygame.transform.scale(
+    fundo_inicial, (LARGURA, ALTURA)
+)
 
 audio = SistemaSonoro()
 audio.iniciar_musica()
@@ -77,7 +98,10 @@ def reproduzir_video_vitoria(tela):
     """Reproduz o vídeo de vitória, incluindo o áudio original."""
 
     if not CAMINHO_VIDEO_VITORIA.is_file():
-        print(f"Vídeo de vitória não encontrado: {CAMINHO_VIDEO_VITORIA}")
+        print(
+            f"Vídeo de vitória não encontrado: "
+            f"{CAMINHO_VIDEO_VITORIA}"
+        )
         return True
 
     caminho_audio_temporario = None
@@ -100,7 +124,6 @@ def reproduzir_video_vitoria(tela):
                     logger=None
                 )
 
-            # Interrompe a música de fundo antes do áudio do vídeo.
             pygame.mixer.music.stop()
 
             if caminho_audio_temporario is not None:
@@ -117,12 +140,17 @@ def reproduzir_video_vitoria(tela):
                         pygame.mixer.music.stop()
                         return False
 
-                tempo = (pygame.time.get_ticks() - inicio) / 1000.0
+                tempo = (
+                    pygame.time.get_ticks() - inicio
+                ) / 1000.0
 
                 if tempo >= video.duration:
                     break
 
-                quadro = np.array(video.get_frame(tempo), dtype=np.uint8)
+                quadro = np.array(
+                    video.get_frame(tempo),
+                    dtype=np.uint8
+                )
 
                 superficie = pygame.surfarray.make_surface(
                     np.transpose(quadro, (1, 0, 2))
@@ -294,7 +322,6 @@ pontos_magicos = []
 
 projeteis = []
 rajadas = []
-
 parede_maga = None
 
 estado_jogo = "jogando"
@@ -348,10 +375,6 @@ while rodando:
             continue
 
         if event.type == pygame.KEYDOWN:
-
-            if event.key == pygame.K_F10:
-                feiticeira.vida = 0
-
             if event.key == pygame.K_f and not modo_feitico:
                 modo_feitico = True
                 pontos_magicos = []
@@ -427,7 +450,6 @@ while rodando:
                             feiticeira.rect.center
                         )
                     )
-
                     audio.tocar_efeito("zoltrak")
 
                 elif simbolo == "raio":
@@ -438,7 +460,6 @@ while rodando:
                             velocidade=22
                         )
                     )
-
                     rajadas[-1].tipo_raio = True
 
                 modo_feitico = False
@@ -563,9 +584,7 @@ while rodando:
                 if getattr(r, "tipo_raio", False):
                     inicio = pygame.Vector2(r.posicao)
 
-                    pontos = [
-                        (int(inicio.x), int(inicio.y))
-                    ]
+                    pontos = [(int(inicio.x), int(inicio.y))]
 
                     for i in range(1, 5):
                         pontos.append((
@@ -620,103 +639,20 @@ while rodando:
             )
 
     else:
-        TELA.blit(fundo_terceira_pessoa, (0, 0))
-        desenhar_chao(TELA)
-
-        if maga.vida > 0:
-            TELA.blit(maga.image, maga.rect)
-
-        if feiticeira.vida > 0:
-            TELA.blit(feiticeira.image, feiticeira.rect)
-
-        overlay = pygame.Surface(
-            (LARGURA, ALTURA),
-            pygame.SRCALPHA
-        )
-
-        overlay.fill((10, 8, 20, 205))
-        TELA.blit(overlay, (0, 0))
-
-        venceu = estado_jogo == "vitoria"
-
-        titulo = fonte.render(
-            "VITÓRIA!" if venceu else "VOCÊ FOI DERROTADO",
-            True,
-            (100, 255, 150) if venceu else (255, 90, 100)
-        )
-
-        TELA.blit(
-            titulo,
-            titulo.get_rect(
-                center=(LARGURA // 2, ALTURA // 2 - 70)
-            )
-        )
-
-        subtitulo = fonte_menor.render(
-            "Você venceu o clone!"
-            if venceu
-            else "A clone foi mais forte desta vez.",
-            True,
-            BRANCO
-        )
-
-        TELA.blit(
-            subtitulo,
-            subtitulo.get_rect(
-                center=(LARGURA // 2, ALTURA // 2 - 15)
-            )
-        )
-
-        cor_botao = (
-            (90, 50, 150)
-            if botao_menu.collidepoint(pygame.mouse.get_pos())
-            else (65, 35, 115)
-        )
-
-        pygame.draw.rect(
-            TELA,
-            cor_botao,
-            botao_menu,
-            border_radius=12
-        )
-
-        pygame.draw.rect(
-            TELA,
-            (220, 200, 255),
-            botao_menu,
-            2,
-            border_radius=12
-        )
-
-        texto = fonte_menor.render(
-            "Voltar ao menu",
-            True,
-            BRANCO
-        )
-
-        TELA.blit(
-            texto,
-            texto.get_rect(center=botao_menu.center)
-        )
+        # As imagens já contêm o texto; não desenha botões ou textos extras.
+        if estado_jogo == "vitoria":
+            TELA.blit(fundo_vitoria, (0, 0))
+        else:
+            TELA.blit(fundo_derrota, (0, 0))
 
         restante = max(
             0,
             DURACAO_TELA_FINAL - (agora - tempo_fim)
         )
 
-        TELA.blit(
-            fonte_pequena.render(
-                f"Retorno automático em {math.ceil(restante / 1000)} s",
-                True,
-                BRANCO
-            ),
-            (LARGURA // 2 - 105, ALTURA // 2 + 125)
-        )
-
-        if agora - tempo_fim >= DURACAO_TELA_FINAL:
+        if restante <= 0:
             rodando = False
 
     pygame.display.flip()
-
 
 pygame.quit()
