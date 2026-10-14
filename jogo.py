@@ -1,6 +1,12 @@
+#jogo.py
 from pathlib import Path
 import math
+import os
+import tempfile
+
+import numpy as np
 import pygame
+from moviepy import VideoFileClip
 
 from constantes import *
 from elementos import Cajado, ProjetilMagico, RajadaZoltraak, ParedeMagica
@@ -19,6 +25,7 @@ audio.diminuir_volume()
 
 TELA = pygame.display.set_mode((LARGURA, ALTURA))
 pygame.display.set_caption("Confronto Mágico")
+
 RELOGIO = pygame.time.Clock()
 
 fundo_primeira_pessoa = pygame.image.load(
@@ -60,6 +67,92 @@ fonte_pequena = pygame.font.SysFont("arial", 22)
 
 CHAO_Y = ALTURA - 120
 DURACAO_TELA_FINAL = 8000
+
+CAMINHO_VIDEO_VITORIA = (
+    BASE_DIR / "imagens" / "vitoria-derrota" / "vitoria.mp4"
+)
+
+
+def reproduzir_video_vitoria(tela):
+    """Reproduz o vídeo de vitória, incluindo o áudio original."""
+
+    if not CAMINHO_VIDEO_VITORIA.is_file():
+        print(f"Vídeo de vitória não encontrado: {CAMINHO_VIDEO_VITORIA}")
+        return True
+
+    caminho_audio_temporario = None
+
+    try:
+        with VideoFileClip(str(CAMINHO_VIDEO_VITORIA)) as video:
+            if video.audio is not None:
+                arquivo_temporario = tempfile.NamedTemporaryFile(
+                    suffix=".wav",
+                    delete=False
+                )
+                caminho_audio_temporario = arquivo_temporario.name
+                arquivo_temporario.close()
+
+                video.audio.write_audiofile(
+                    caminho_audio_temporario,
+                    fps=44100,
+                    nbytes=2,
+                    codec="pcm_s16le",
+                    logger=None
+                )
+
+            # Interrompe a música de fundo antes do áudio do vídeo.
+            pygame.mixer.music.stop()
+
+            if caminho_audio_temporario is not None:
+                pygame.mixer.music.load(caminho_audio_temporario)
+                pygame.mixer.music.play()
+
+            relogio_video = pygame.time.Clock()
+            inicio = pygame.time.get_ticks()
+            fps = video.fps if video.fps and video.fps > 0 else 30
+
+            while True:
+                for evento in pygame.event.get():
+                    if evento.type == pygame.QUIT:
+                        pygame.mixer.music.stop()
+                        return False
+
+                tempo = (pygame.time.get_ticks() - inicio) / 1000.0
+
+                if tempo >= video.duration:
+                    break
+
+                quadro = np.array(video.get_frame(tempo), dtype=np.uint8)
+
+                superficie = pygame.surfarray.make_surface(
+                    np.transpose(quadro, (1, 0, 2))
+                )
+
+                superficie = pygame.transform.scale(
+                    superficie,
+                    tela.get_size()
+                )
+
+                tela.blit(superficie, (0, 0))
+                pygame.display.flip()
+                relogio_video.tick(fps)
+
+            pygame.mixer.music.stop()
+            return True
+
+    except Exception as erro:
+        print(f"Erro ao reproduzir o vídeo de vitória: {erro}")
+        return True
+
+    finally:
+        if (
+            caminho_audio_temporario is not None
+            and os.path.exists(caminho_audio_temporario)
+        ):
+            try:
+                os.remove(caminho_audio_temporario)
+            except OSError:
+                pass
 
 
 def desenhar_chao(tela):
@@ -201,6 +294,7 @@ pontos_magicos = []
 
 projeteis = []
 rajadas = []
+
 parede_maga = None
 
 estado_jogo = "jogando"
@@ -254,6 +348,10 @@ while rodando:
             continue
 
         if event.type == pygame.KEYDOWN:
+
+            if event.key == pygame.K_F10:
+                feiticeira.vida = 0
+
             if event.key == pygame.K_f and not modo_feitico:
                 modo_feitico = True
                 pontos_magicos = []
@@ -411,7 +509,13 @@ while rodando:
         if feiticeira.vida <= 0:
             feiticeira.vida = 0
             estado_jogo = "vitoria"
-            tempo_fim = agora
+
+            # Exibe o vídeo de vitória uma única vez.
+            if not reproduzir_video_vitoria(TELA):
+                rodando = False
+                break
+
+            tempo_fim = pygame.time.get_ticks()
 
         elif maga.vida <= 0:
             maga.vida = 0
@@ -613,5 +717,6 @@ while rodando:
             rodando = False
 
     pygame.display.flip()
+
 
 pygame.quit()
