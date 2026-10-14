@@ -6,6 +6,7 @@ from constantes import *
 from frieren import Entidade
 from elementos import RajadaZoltraak, ParedeMagica
 
+
 class Cloneataque:
     def __init__(self, origem, alvo, velocidade=6):
         self.posicao = pygame.Vector2(origem)
@@ -29,8 +30,9 @@ class Cloneataque:
         pygame.draw.circle(tela, (240, 200, 255), self.rect.center, 4)
 
 class Feiticeira(Entidade):
-    def __init__(self, x, y):
+    def __init__(self, x, y, audio=None):
         super().__init__(x, y)
+        self.audio = audio
         base_dir = Path(__file__).resolve().parent
         pasta_imagens = base_dir / "imagens" / "Personagens"
         self.vida = 11
@@ -121,7 +123,15 @@ class Feiticeira(Entidade):
 
         # Ataque básico: disponível desde o início, ficando gradualmente mais rápido.
         if agora - self.ultimo_ataque >= self.cooldown_ataque:
-            self.projeteis.append(Cloneataque(self.rect.center, maga.rect.center, atributos["velocidade_projetil"]))
+            self.projeteis.append(
+                Cloneataque(
+                    self.rect.center,
+                    maga.rect.center,
+                    atributos["velocidade_projetil"]
+                )
+            )
+            if self.audio:
+                self.audio.tocar_efeito("disparo_inimiga")
             self.ultimo_ataque = agora
 
         # Zoltraak desbloqueia após perder 2 vidas. A probabilidade é independente

@@ -1,14 +1,19 @@
-
 import os
 import runpy
 from pathlib import Path
 
 import pygame
 from constantes import LARGURA, ALTURA
+from sons import SistemaSonoro
 
-os.chdir(Path(__file__).resolve().parent)
+BASE_DIR = Path(__file__).resolve().parent
+os.chdir(BASE_DIR)
 
 pygame.init()
+
+audio = SistemaSonoro()
+audio.iniciar_musica()
+audio.aumentar_volume()
 
 TELA = pygame.display.set_mode((LARGURA, ALTURA))
 pygame.display.set_caption("Confronto Mágico")
@@ -119,16 +124,15 @@ def tela_inicial():
             if evento.type == pygame.QUIT:
                 return "sair"
 
-            if evento.type == pygame.MOUSEBUTTONDOWN:
-                if evento.button == 1:
-                    if botoes["jogar"].collidepoint(evento.pos):
-                        return "jogar"
+            if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
+                if botoes["jogar"].collidepoint(evento.pos):
+                    return "jogar"
 
-                    if botoes["instrucoes"].collidepoint(evento.pos):
-                        return "instrucoes"
+                if botoes["instrucoes"].collidepoint(evento.pos):
+                    return "instrucoes"
 
-                    if botoes["sair"].collidepoint(evento.pos):
-                        return "sair"
+                if botoes["sair"].collidepoint(evento.pos):
+                    return "sair"
 
         desenhar_fundo()
 
@@ -180,10 +184,9 @@ def tela_instrucoes():
                 if evento.key == pygame.K_ESCAPE:
                     return "voltar"
 
-            if evento.type == pygame.MOUSEBUTTONDOWN:
-                if evento.button == 1:
-                    if botao_voltar.collidepoint(evento.pos):
-                        return "voltar"
+            if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
+                if botao_voltar.collidepoint(evento.pos):
+                    return "voltar"
 
         desenhar_fundo()
 
@@ -233,12 +236,24 @@ while rodando:
     escolha = tela_inicial()
 
     if escolha == "jogar":
-        pygame.quit()
-        runpy.run_path("jogo.py")
-        pygame.init()
-        TELA = pygame.display.set_mode((LARGURA, ALTURA))
-        pygame.display.set_caption("Confronto Mágico")
-        RELOGIO = pygame.time.Clock()
+        audio.definir_volume(0.2)
+
+        pygame.display.quit()
+
+        try:
+            runpy.run_path(str(BASE_DIR / "jogo.py"))
+        finally:
+            if not pygame.get_init():
+                pygame.init()
+
+            if not pygame.display.get_init():
+                pygame.display.init()
+
+            TELA = pygame.display.set_mode((LARGURA, ALTURA))
+            pygame.display.set_caption("Confronto Mágico")
+            RELOGIO = pygame.time.Clock()
+
+            audio.definir_volume(0.7)
 
     elif escolha == "instrucoes":
         resultado = tela_instrucoes()
