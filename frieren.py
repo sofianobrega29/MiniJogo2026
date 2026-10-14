@@ -39,26 +39,8 @@ class Maga(Combatente):
             self.frames_voando.append(self._ampliar(quadro))
 
         for i in range(5):
-<<<<<<< Updated upstream
-            quadro = self.spritesheet_andando.subsurface(
-                (i * 50, 0, 50, 60)
-            ).copy()
-            quadro = pygame.transform.scale_by(quadro, 3)
-            self.frames_andando.append(quadro)
-
-        self.image = self.sprite_parada_chao
-        self.rect = self.image.get_rect(topleft=(x, y))
-
-        self.hitbox = pygame.Rect(
-            self.rect.x + 15,
-            self.rect.y + 20,
-            self.rect.width - 30,
-            self.rect.height - 20
-        )
-=======
             quadro = spritesheet_andando.subsurface((i * 50, 0, 50, 60)).copy()
             self.frames_andando.append(self._ampliar(quadro))
->>>>>>> Stashed changes
 
         self.tempo_animacao_voo = 0
         self.tempo_animacao_andar = 0
@@ -188,50 +170,4 @@ class Maga(Combatente):
             imagem = self.sprite_parada_chao
             self.quadro_atual = 0
 
-<<<<<<< Updated upstream
-        # Movimento horizontal
-        if teclas[pygame.K_a] or teclas[pygame.K_LEFT]:
-            self.rect.x -= 5
-            self.direcao = "esquerda"
-
-        if teclas[pygame.K_d] or teclas[pygame.K_RIGHT]:
-            self.rect.x += 5
-            self.direcao = "direita"
-
-        # Movimento durante o voo
-        if self.voando:
-            if teclas[pygame.K_w] or teclas[pygame.K_UP]:
-                self.rect.y -= 4
-
-            if teclas[pygame.K_s] or teclas[pygame.K_DOWN]:
-                self.rect.y += 4
-
-            oscilacao = math.sin(self.tempo_voo) * 2
-            self.rect.y += int(oscilacao)
-
-
-        else:
-            self.velocidade_y += self.gravidade
-            self.rect.y += int(self.velocidade_y)
-
-            chao = ALTURA - 120
-
-            if self.rect.bottom >= chao:
-                self.rect.bottom = chao
-                self.velocidade_y = 0
-                self.no_chao = True
-                self.pulando = False
-                self.voando = False
-            else:
-                self.no_chao = False
-
-
-        self.imagem_original = self.image
-        self.mudar_direcao()
-
-
-        self.rect.clamp_ip(tela.get_rect())
-        self.hitbox.midbottom = self.rect.midbottom
-=======
         self.definir_imagem(imagem)
->>>>>>> Stashed changes
