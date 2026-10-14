@@ -189,6 +189,16 @@ projeteis = []
 fonte = pygame.font.SysFont(None, 36)
 fonte_menor = pygame.font.SysFont(None, 28)
 
+estado_jogo = "jogando"
+
+
+botao_jogar = pygame.Rect(
+    LARGURA // 2 - 170, ALTURA // 2 + 40, 150, 55
+)
+
+botao_sair = pygame.Rect(
+    LARGURA // 2 + 20, ALTURA // 2 + 40, 150, 55
+)
 rodando = True
 
 while rodando:
@@ -204,6 +214,29 @@ while rodando:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             rodando = False
+
+    if estado_jogo != "jogando":
+        f event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if estado_jogo == "derrota" and botao_jogar.collidepoint(event.pos):
+                # Reiniciia os personagens e os projéteis
+                maga = Maga(150, ALTURA - 200)
+                feiticeira = Feiticeira(950, 180)
+                cajado = Cajado()
+
+                todos_sprites = pygame.sprite.Group()
+                todos_sprites.add(maga, feiticeira)
+
+                modo_feitico = False
+                desenhando = False
+                pontos_magicos = []
+                projeteis = []
+
+                estado_jogo = "jogando"
+
+        elif botao_sair.collidepoint(event.pos):
+                rodando = False
+
+        continue
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_f and not modo_feitico:
@@ -267,25 +300,6 @@ while rodando:
             feiticeira.update(maga)
 
     for projetil in projeteis[:]:
-
-        for tiro_clone in feiticeira.projeteis[:]:
-            tiro_clone.update()
-
-            if not TELA.get_rect().colliderect(tiro_clone.rect):
-                feiticeira.projeteis.remove(tiro_clone)
-                continue
-
-            if maga.vida > 0 and tiro_clone.rect.colliderect(maga.rect):
-                maga.vida -= tiro_clone.dano
-                feiticeira.projeteis.remove(tiro_clone)
-
-                print("A Maga recebeu dano!")
-                print("Vida restante:", max(0, maga.vida))
-
-                if maga.vida <= 0:
-                    maga.vida = 0
-                    print("A Maga foi derrotada!")
-
         if feiticeira.vida <= 0:
             projeteis.remove(projetil)
             continue
@@ -294,7 +308,6 @@ while rodando:
 
         if not projetil.ativo:
             feiticeira.vida -= 1
-
             feiticeira.ultimo_dano = pygame.time.get_ticks()
             projeteis.remove(projetil)
 
@@ -305,6 +318,24 @@ while rodando:
                 feiticeira.vida = 0
                 feiticeira.kill()
                 print("Inimiga derrotada!")
+
+    for tiro_clone in feiticeira.projeteis[:]:
+        tiro_clone.update()
+
+        if not TELA.get_rect().colliderect(tiro_clone.rect):
+            feiticeira.projeteis.remove(tiro_clone)
+            continue
+
+        if maga.vida > 0 and tiro_clone.rect.colliderect(maga.rect):
+            maga.vida -= tiro_clone.dano
+            feiticeira.projeteis.remove(tiro_clone)
+
+            print("A Maga recebeu dano!")
+            print("Vida restante:", max(0, maga.vida))
+
+            if maga.vida <= 0:
+                maga.vida = 0
+                print("A Maga foi derrotada!")
 
     if modo_feitico:
         TELA.blit(fundo_primeira_pessoa, (0, 0))
