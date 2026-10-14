@@ -29,6 +29,20 @@ fonte_texto = pygame.font.SysFont("arial", 27)
 fonte_pequena = pygame.font.SysFont("arial", 22)
 
 
+CAPA_INICIAL = pygame.image.load(
+    str(Path(__file__).resolve().parent / "imagens" / "Fundo" / "capa_inicial.png")
+).convert()
+_escala = max(LARGURA / CAPA_INICIAL.get_width(), ALTURA / CAPA_INICIAL.get_height())
+CAPA_INICIAL = pygame.transform.smoothscale(
+    CAPA_INICIAL,
+    (round(CAPA_INICIAL.get_width() * _escala), round(CAPA_INICIAL.get_height() * _escala)),
+)
+CAPA_INICIAL_CORTADA = pygame.Surface((LARGURA, ALTURA))
+CAPA_INICIAL_CORTADA.blit(
+    CAPA_INICIAL, CAPA_INICIAL.get_rect(center=(LARGURA // 2, ALTURA // 2))
+)
+
+
 def desenhar_fundo():
     TELA.fill(PRETO)
 
@@ -105,10 +119,12 @@ def desenhar_botao(texto, retangulo, mouse):
 
 
 def tela_inicial():
+    # Os botões ficam à direita, abaixo do título que já faz parte da capa.
+    x_botoes = int(LARGURA * 0.71) - 170
     botoes = {
-        "jogar": pygame.Rect(LARGURA // 2 - 170, 510, 340, 70),
-        "instrucoes": pygame.Rect(LARGURA // 2 - 170, 600, 340, 70),
-        "sair": pygame.Rect(LARGURA // 2 - 170, 690, 340, 70)
+        "jogar": pygame.Rect(x_botoes, 420, 340, 70),
+        "instrucoes": pygame.Rect(x_botoes, 510, 340, 70),
+        "sair": pygame.Rect(x_botoes, 600, 340, 70)
     }
 
     while True:
@@ -130,28 +146,7 @@ def tela_inicial():
                     if botoes["sair"].collidepoint(evento.pos):
                         return "sair"
 
-        desenhar_fundo()
-
-        desenhar_texto(
-            "CONFRONTO",
-            fonte_titulo,
-            BRANCO,
-            (LARGURA // 2, 180)
-        )
-
-        desenhar_texto(
-            "MÁGICO",
-            fonte_titulo,
-            ROXO_CLARO,
-            (LARGURA // 2, 275)
-        )
-
-        desenhar_texto(
-            "Prepare sua magia e enfrente seu clone!",
-            fonte_subtitulo,
-            CINZA,
-            (LARGURA // 2, 405)
-        )
+        TELA.blit(CAPA_INICIAL_CORTADA, (0, 0))
 
         desenhar_botao("JOGAR", botoes["jogar"], mouse)
         desenhar_botao("COMO JOGAR", botoes["instrucoes"], mouse)

@@ -1,6 +1,7 @@
 from enum import Enum
 from pathlib import Path
 import math
+import cv2
 
 import pygame
 
@@ -21,6 +22,8 @@ from feiticos import CATALOGO, GESTOS, NOMES_EXIBICAO
 from frieren import Maga
 
 PASTA_IMAGENS = Path(__file__).resolve().parent / "imagens"
+PASTA_VIDEOS = PASTA_IMAGENS / "Video"
+CAMINHO_VIDEO_VITORIA = PASTA_VIDEOS / "vitoria.mp4"
 
 ROXO = (125, 55, 210)
 ROXO_CLARO = (190, 130, 255)
@@ -72,6 +75,19 @@ class Jogo:
         )
         self.icone_vida = pygame.transform.scale(vida, (45, 30))
 
+        # Vida da clone: inimigo_vazio.png (0) e inimigo_1.png ... inimigo_11.png
+        pasta_ui = PASTA_IMAGENS / "UI"
+        self.imagens_vida_clone = [
+            pygame.image.load(str(pasta_ui / "inimigo_vazio.png")).convert_alpha()
+        ] + [
+            pygame.image.load(str(pasta_ui / f"inimigo_{i}.png")).convert_alpha()
+            for i in range(1, 12)
+        ]
+
+        # Capas da tela de vitória e de derrota
+        self.capa_vitoria = self._carregar_capa("capa_vitoria.png")
+        self.capa_derrota = self._carregar_capa("capa_derrota.png")
+
         self.fonte_menor = pygame.font.SysFont(None, 28)
         self.fonte_dica = pygame.font.SysFont(None, 30)
         self.fonte_mensagem = pygame.font.SysFont(None, 44)
@@ -80,13 +96,35 @@ class Jogo:
         self.fonte_botao = pygame.font.SysFont("arial", 34, bold=True)
 
         self.cajado = Cajado()
-        self.botao_menu = pygame.Rect(LARGURA // 2 - 170, ALTURA // 2 + 80, 340, 70)
+        self.botao_menu = pygame.Rect(LARGURA // 2 - 170, ALTURA - 130, 340, 70)
+
+    @staticmethod
+    def _carregar_capa(nome):
+        """Carrega uma capa e a ajusta à tela sem distorcer (corta o excesso)."""
+        imagem = pygame.image.load(str(PASTA_IMAGENS / "Fundo" / nome)).convert()
+        largura, altura = imagem.get_size()
+        escala = max(LARGURA / largura, ALTURA / altura)
+        imagem = pygame.transform.smoothscale(
+            imagem, (round(largura * escala), round(altura * escala))
+        )
+        capa = pygame.Surface((LARGURA, ALTURA))
+        capa.blit(imagem, imagem.get_rect(center=(LARGURA // 2, ALTURA // 2)))
+        return capa
+
 
     def reiniciar(self):
-        self.tempo = 0           # tempo de jogo (ms); para quando o mundo está pausado
-        self.tempo_real = 0      # tempo que sempre anda (mensagens, tela final)
+        if not hasattr(self, "video_vitoria"):
+            self.video_vitoria = None
+        if self.video_vitoria is not None:
+            self.video_vitoria.release()
+            self.video_vitoria = None
+
+        self.tempo = 0
+        self.tempo_real = 0
         self.estado = Estado.JOGANDO
         self.tempo_no_final = 0
+        self.video_tempo = 0
+
 
         self.maga = Maga(230, Y_PES_CHAO)
         self.clone = Feiticeira(950, 180)
@@ -259,10 +297,21 @@ class Jogo:
             self.clone.kill()
             self._terminar(Estado.VITORIA)
 
+
     def _terminar(self, estado):
         self.estado = estado
         self.tempo_no_final = 0
         self._sair_do_modo_feitico()
+
+        if estado == Estado.VITORIA:
+            if self.video_vitoria is not None:
+                self.video_vitoria.release()
+
+            self.video_vitoria = cv2.VideoCapture(
+                str(CAMINHO_VIDEO_VITORIA)
+            )
+            self.video_tempo = 0
+
 
     # ------------------------------------------------------------------
     # Desenho
@@ -349,33 +398,15 @@ class Jogo:
             self.tela.blit(self.icone_vida, (20 + i * 50, 45))
 
     def _desenhar_barra_vida_clone(self):
+        """Vida da clone com as imagens inimigo_N.png (N = vidas restantes)."""
         clone = self.clone
-        largura_barra = 350
-        altura_barra = 26
-        x = LARGURA - largura_barra - 30
-        y = 35
-
         vidas = max(0, min(clone.vida, clone.vida_maxima))
-        proporcao = vidas / clone.vida_maxima if clone.vida_maxima > 0 else 0
+        imagem = self.imagens_vida_clone[min(vidas, len(self.imagens_vida_clone) - 1)]
 
-        texto = self.fonte_menor.render(
-            f"FEITICEIRA CLONE: {vidas}/{clone.vida_maxima}", True, BRANCO
-        )
+        x = LARGURA - imagem.get_width() - 30
+        texto = self.fonte_menor.render("FEITICEIRA CLONE", True, BRANCO)
         self.tela.blit(texto, (x, 5))
-
-        pygame.draw.rect(self.tela, (45, 35, 55), (x, y, largura_barra, altura_barra), border_radius=8)
-
-        if int(largura_barra * proporcao) > 0:
-            pygame.draw.rect(
-                self.tela,
-                (180, 50, 220),
-                (x, y, int(largura_barra * proporcao), altura_barra),
-                border_radius=8,
-            )
-
-        pygame.draw.rect(
-            self.tela, (230, 210, 240), (x, y, largura_barra, altura_barra), width=2, border_radius=8
-        )
+        self.tela.blit(imagem, (x, 35))
 
     def _desenhar_painel_feiticos(self):
         """Quatro quadradinhos (um por feitiço) mostrando a recarga."""
@@ -428,26 +459,25 @@ class Jogo:
 
     # ---- tela final ----------------------------------------------------
     def _desenhar_tela_final(self):
-        escurecer = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
-        escurecer.fill((10, 10, 20, 205))
-        self.tela.blit(escurecer, (0, 0))
+        if self.estado == Estado.VITORIA and self.video_vitoria is not None:
+            sucesso, quadro = self.video_vitoria.read()
 
-        if self.estado == Estado.VITORIA:
-            titulo, cor = "VITÓRIA!", (80, 255, 130)
-            subtitulo = "Você derrotou a clone!"
+            if sucesso:
+                quadro = cv2.cvtColor(quadro, cv2.COLOR_BGR2RGB)
+                quadro = pygame.surfarray.make_surface(quadro.swapaxes(0, 1))
+                quadro = pygame.transform.scale(quadro, (LARGURA, ALTURA))
+                self.tela.blit(quadro, (0, 0))
+            else:
+                self.video_vitoria.set(cv2.CAP_PROP_POS_FRAMES, 0)
         else:
-            titulo, cor = "DERROTA", (255, 85, 85)
-            subtitulo = "A Maga foi derrotada..."
+            self.tela.blit(self.capa_derrota, (0, 0))
 
-        self._texto_centralizado(titulo, self.fonte_titulo, cor, (LARGURA // 2, ALTURA // 2 - 120))
-        self._texto_centralizado(subtitulo, self.fonte_subtitulo, BRANCO, (LARGURA // 2, ALTURA // 2 - 40))
 
         restante = max(0, math.ceil((self.TEMPO_VOLTA_MENU - self.tempo_no_final) / 1000))
-        self._texto_centralizado(
+        self._texto_com_fundo(
             f"Voltando ao menu em {restante}s...",
             self.fonte_menor,
-            (190, 180, 205),
-            (LARGURA // 2, ALTURA // 2 + 25),
+            (LARGURA // 2, self.botao_menu.top - 28),
         )
 
         mouse = pygame.mouse.get_pos()

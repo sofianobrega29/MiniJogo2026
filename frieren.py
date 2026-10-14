@@ -15,7 +15,7 @@ class Maga(Combatente):
 
     def __init__(self, x, y):
         """x, y = posição dos pés (meio da base do sprite)."""
-        super().__init__(x, y, vida_maxima=3)
+        super().__init__(x, y, vida_maxima=20)
 
         pasta_imagens = Path(__file__).resolve().parent / "imagens" / "Personagens"
 

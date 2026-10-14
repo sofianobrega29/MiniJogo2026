@@ -296,7 +296,7 @@ class ParedeMagica(Feitico):
     CAMADA = 0
 
     DURACAO = 4000
-    LARGURA_PAREDE = 34
+    LARGURA_PAREDE = 84
     ALTURA_PAREDE = 250
     RESISTENCIA = 3  # quantos golpes ela aguenta antes de quebrar
 
@@ -317,16 +317,9 @@ class ParedeMagica(Feitico):
         self.superficie = self._criar_superficie()
 
     def _criar_superficie(self):
-        superficie = pygame.Surface(self.rect.size, pygame.SRCALPHA)
-        largura, altura = self.rect.size
-        superficie.fill((110, 205, 255, 95))
-
-        for y in range(-largura, altura, 26):
-            pygame.draw.line(superficie, (190, 240, 255, 130), (0, y + largura), (largura, y), 2)
-            pygame.draw.line(superficie, (190, 240, 255, 90), (0, y), (largura, y + largura), 2)
-
-        pygame.draw.rect(superficie, (225, 250, 255, 235), (0, 0, largura, altura), 3, border_radius=8)
-        return superficie
+        """Sprite do escudo: favo de hexágonos (imagens/UI/escudo.png)."""
+        imagem = carregar_imagem("escudo.png")
+        return pygame.transform.smoothscale(imagem, self.rect.size)
 
     def absorver(self, agora):
         self.durabilidade -= 1
@@ -354,7 +347,9 @@ class ParedeMagica(Feitico):
         tela.blit(imagem, self.rect)
 
         if self.brilhando:
-            pygame.draw.rect(tela, (255, 255, 255), self.rect, 4, border_radius=8)
+            clarao = self.superficie.copy()
+            clarao.fill((255, 255, 255, 0), special_flags=pygame.BLEND_RGB_MAX)  # sprite todo branco
+            tela.blit(clarao, self.rect)
 
         # Rachaduras conforme perde resistência.
         for i in range(self.RESISTENCIA - self.durabilidade):
