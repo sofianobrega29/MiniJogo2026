@@ -260,7 +260,7 @@ while rodando:
                     modo_feitico = False
                     pontos_magicos = []
 
-    if not modo_feitico:
+    if not modo_feitico and maga.vida > 0:
         maga.update(TELA)
 
         if feiticeira.vida > 0:
@@ -344,6 +344,17 @@ while rodando:
         )
 
         TELA.blit(texto_estado, (20, 90))
+        
+        if maga.vida < 0:
+            mensagem = fonte.render(
+                'Foste Derrotado!', 
+                True,
+                (255, 60, 60)
+            )
+            fundo_mensagem = mensagem.get_rect(
+                center = (LARGURA // 2, ALTURA // 2)
+            )
+            TELA.blit(mensagem, fundo_mensagem)
 
     pygame.display.flip()
 
