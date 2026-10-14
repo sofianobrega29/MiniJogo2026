@@ -90,6 +90,7 @@ class RajadaZoltraak:
         self.portal = pygame.transform.scale_by(self.portal, 5)
         self.raio_img = pygame.image.load(str(pasta_ui / "zoltrak-pixilart (1).png")).convert_alpha()
         self.raio_img = pygame.transform.scale_by(self.raio_img, 5)
+        self.ataqueraio_img = pygame.image.load(pasta_ui  / "Raio.png")
         self.quadro_portal = 0
         self.posicao = pygame.Vector2(origem)
         direcao = pygame.Vector2(alvo) - self.posicao
@@ -124,6 +125,8 @@ class RajadaZoltraak:
 
 class ParedeMagica:
     def __init__(self, maga, duracao=2400):
+        self.image = pygame.image.load("imagens/UI/Escudo.png")
+        self.image = pygame.transform.scale2x(self.image)
         self.duracao = duracao
         self.criado = pygame.time.get_ticks()
         largura, altura = 28, 145
@@ -134,6 +137,4 @@ class ParedeMagica:
         return pygame.time.get_ticks() - self.criado < self.duracao
 
     def desenhar(self, tela):
-        pygame.draw.rect(tela, (80, 220, 255), self.rect, border_radius=8)
-        pygame.draw.rect(tela, (225, 255, 255), self.rect, 3, border_radius=8)
-        pygame.draw.line(tela, (180, 250, 255), self.rect.midtop, self.rect.midbottom, 2)
+        tela.blit(self.image, self.rect)
