@@ -214,29 +214,28 @@ while rodando:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             rodando = False
+            continue
 
-    if estado_jogo != "jogando":
-        f event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if estado_jogo == "derrota" and botao_jogar.collidepoint(event.pos):
-                # Reiniciia os personagens e os projéteis
-                maga = Maga(150, ALTURA - 200)
-                feiticeira = Feiticeira(950, 180)
-                cajado = Cajado()
+        if estado_jogo != "jogando":
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if estado_jogo == "derrota" and botao_jogar.collidepoint(event.pos):
+                    # Reinicia os personagens e os elementos da partida
+                    maga = Maga(150, ALTURA - 200)
+                    feiticeira = Feiticeira(950, 180)
+                    cajado = Cajado()
 
-                todos_sprites = pygame.sprite.Group()
-                todos_sprites.add(maga, feiticeira)
+                    todos_sprites = pygame.sprite.Group()
+                    todos_sprites.add(maga, feiticeira)
 
-                modo_feitico = False
-                desenhando = False
-                pontos_magicos = []
-                projeteis = []
-
-                estado_jogo = "jogando"
-
-        elif botao_sair.collidepoint(event.pos):
-                rodando = False
-
-        continue
+                    modo_feitico = False
+                    desenhando = False
+                    pontos_magicos = []
+                    projeteis = []
+                    estado_jogo = "jogando"
+                elif botao_sair.collidepoint(event.pos):
+                    rodando = False
+            continue
+    
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_f and not modo_feitico:
@@ -293,13 +292,13 @@ while rodando:
                     modo_feitico = False
                     pontos_magicos = []
 
-    if not modo_feitico and maga.vida > 0:
+    if estado_jogo == "jogando" and not modo_feitico and maga.vida > 0:
         maga.update(TELA)
 
         if feiticeira.vida > 0:
             feiticeira.update(maga)
 
-    for projetil in projeteis[:]:
+    for projetil in (projeteis[:] if estado_jogo == "jogando" else []):
         if feiticeira.vida <= 0:
             projeteis.remove(projetil)
             continue
@@ -317,9 +316,10 @@ while rodando:
             if feiticeira.vida <= 0:
                 feiticeira.vida = 0
                 feiticeira.kill()
+                estado_jogo = "Vitoria"
                 print("Inimiga derrotada!")
 
-    for tiro_clone in feiticeira.projeteis[:]:
+    for tiro_clone in (feiticeira.projeteis[:] if estado_jogo == "jogando" else []):
         tiro_clone.update()
 
         if not TELA.get_rect().colliderect(tiro_clone.rect):
@@ -335,6 +335,7 @@ while rodando:
 
             if maga.vida <= 0:
                 maga.vida = 0
+                estado_jogo = "Derrota"
                 print("A Maga foi derrotada!")
 
     if modo_feitico:
@@ -376,16 +377,35 @@ while rodando:
 
         TELA.blit(texto_estado, (20, 90))
         
-        if maga.vida < 0:
-            mensagem = fonte.render(
-                'Foste Derrotado!', 
-                True,
-                (255, 60, 60)
+    if estado_jogo in ("derrota", "vitoria"):
+        escurecer = pygame.Surface((LARGURA, ALTURA))
+        escurecer.set_alpha(210)
+        escurecer.fill((10, 10, 20))
+        TELA.blit(escurecer, (0, 0))
+
+        if estado_jogo == "derrota":
+            titulo = fonte.render("FOSTE DERROTADO!", True, (255, 75, 75))
+        else:
+            titulo = fonte.render("VITÓRIA!", True, (80, 255, 130))
+
+        TELA.blit(
+            titulo,
+            titulo.get_rect(center=(LARGURA // 2, ALTURA // 2 - 55))
+        )
+
+       
+        pygame.draw.rect(TELA, (150, 45, 45), botao_sair, border_radius=10)
+        texto_sair = fonte_menor.render("Sair", True, BRANCO)
+        TELA.blit(texto_sair, texto_sair.get_rect(center=botao_sair.center))
+
+      
+        if estado_jogo == "derrota":
+            pygame.draw.rect(TELA, (40, 130, 75), botao_jogar, border_radius=10)
+            texto_jogar = fonte_menor.render("Jogar Novamente", True, BRANCO)
+            TELA.blit(
+                texto_jogar,
+                texto_jogar.get_rect(center=botao_jogar.center)
             )
-            fundo_mensagem = mensagem.get_rect(
-                center = (LARGURA // 2, ALTURA // 2)
-            )
-            TELA.blit(mensagem, fundo_mensagem)
 
     pygame.display.flip()
 
