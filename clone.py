@@ -5,6 +5,54 @@ import math
 from constantes import *
 from frieren import Entidade
 
+class Cloneataque:
+    def __init__(self, origem, alvo):
+        self.x, self.y = origem
+
+        # Direção do projétil até à Maga
+        dx = alvo[0] - origem[0]
+        dy = alvo[1] - origem[1]
+        distancia = math.hypot(dx, dy)
+
+        if distancia != 0:
+            self.dx = dx / distancia
+            self.dy = dy / distancia
+        else:
+            self.dx = 1
+            self.dy = 0
+
+        self.velocidade = 6
+        self.dano = 1
+        self.raio = 9
+
+        self.rect = pygame.Rect(
+            self.x - self.raio,
+            self.y - self.raio,
+            self.raio * 2,
+            self.raio * 2
+        )
+    def update(self):
+        self.x += self.dx * self.velocidade
+        self.y += self.dy * self.velocidade
+
+        self.rect.center = (int(self.x), int(self.y))
+
+    def desenhar(self, tela):
+        # Projétil mágico roxo
+        pygame.draw.circle(
+            tela,
+            (190, 50, 255),
+            self.rect.center,
+            self.raio
+        )
+
+        pygame.draw.circle(
+            tela,
+            (240, 200, 255),
+            self.rect.center,
+            4
+        )
+
 
 class Feiticeira(Entidade):
     def __init__(self, x, y):
@@ -15,6 +63,11 @@ class Feiticeira(Entidade):
 
         self.vida = 11
         self.vida_maxima = 11
+        self.ultimo_dano = pygame.time.get_ticks()
+        self.Tempo_regeneracao = 3000
+        self.projeteis = []
+        self.ultimo_ataque = pygame.time.get_ticks()
+        self.cooldown_ataque = 1200
 
         self.spritesheet_voando = pygame.image.load(
             str(pasta_imagens / "CloneFly.png")
@@ -64,6 +117,23 @@ class Feiticeira(Entidade):
         self.tempo_voo += 0.06
 
         self.tempo_animacao += 1
+
+        agora = pygame.time.get_ticks()
+
+        if agora - self.ultimo_dano >= self.Tempo_regeneracao:
+            if self.vida < self.vida_maxima:
+                self.vida += 1
+
+            self.ultimo_dano = agora
+        if agora - self.ultimo_ataque >= self.cooldown_ataque:
+            self.projeteis.append(
+                Cloneataque(
+            self.rect.center,
+            maga.rect.center
+        )
+    )
+
+            self.ultimo_ataque = agora
 
         if self.tempo_animacao >= 30:
             self.quadro_atual = (
