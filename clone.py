@@ -4,7 +4,7 @@ import random
 
 import pygame
 
-from constantes import LARGURA, ALTURA
+from constantes import LARGURA, ALTURA, DURACAO_GELO, FATOR_GELO
 from entidade import Combatente
 from feiticos import limitar
 
@@ -21,6 +21,9 @@ class Feiticeira(Combatente):
         - desvia dos feitiços da Maga;
         - usa a parede mágica para se defender;
         - libera mais feitiços (raio com 8 vidas, zoltraak com 5).
+
+    Quando está congelada (feitiço de gelo da Maga) ela fica FATOR_GELO vezes mais
+    lenta: anda, ataca, reage, recarrega os feitiços e até regenera mais devagar.
 
     Os valores de cada nível estão em PARAMETROS, no formato (início, fim):
     o primeiro vale com a vida cheia e o segundo com 1 de vida.
@@ -75,6 +78,10 @@ class Feiticeira(Combatente):
         self.limite_superior = 100
         self.limite_inferior = ALTURA - 220
 
+        self.gelo_ate = 0
+        self._tempo = 0               # último instante do jogo que ela viu (para saber se está congelada)
+        self.calma = 0                # ms (já ajustados pelo gelo) sem levar dano, para regenerar
+
         self.proxima_acao = 1500
         self.desvio = None            # (x, y) de destino do desvio atual
         self.desvio_inicio = 0
@@ -95,7 +102,61 @@ class Feiticeira(Combatente):
 
     def valor(self, nome):
         facil, dificil = self.PARAMETROS[nome]
-        return interpolar(facil, dificil, self.dificuldade)
+        resultado = interpolar(facil, dificil, self.dificuldade)
+
+        if self.congelada(self._tempo):
+            if nome == "velocidade":
+                resultado /= FATOR_GELO
+            elif nome in ("intervalo_acao", "fator_recarga", "tempo_reacao"):
+                resultado *= FATOR_GELO
+
+        return resultado
+
+    # ---- gelo ----------------------------------------------------------
+    def congelada(self, agora):
+        return agora < self.gelo_ate
+
+    def congelar(self, agora, duracao=DURACAO_GELO):
+        """Feitiço de gelo: não causa dano, mas deixa a clone (e as recargas dela) mais lenta."""
+        if not self.vivo:
+            return
+
+        if not self.congelada(agora):
+            # O que já estava "contando" também demora mais: estica o tempo que faltava.
+            extra = FATOR_GELO - 1
+            self.proxima_acao += max(0, self.proxima_acao - agora) * extra
+
+            for nome, pronto in self.pronto_em.items():
+                self.pronto_em[nome] = pronto + max(0, pronto - agora) * extra
+
+        self.gelo_ate = agora + duracao
+
+    def imagem_visual(self, agora):
+        """Congelada, o sprite ganha um tom azul de gelo."""
+        if not self.congelada(agora):
+            return self.image
+
+        imagem = self.image.copy()
+        imagem.fill((0, 50, 105, 0), special_flags=pygame.BLEND_RGB_ADD)
+        return imagem
+
+    def desenhar_efeitos(self, tela, agora):
+        """Cristais de gelo girando em volta (piscam perto do fim)."""
+        if not self.congelada(agora):
+            return
+
+        if self.gelo_ate - agora <= 700 and (agora // 90) % 2 != 0:
+            return
+
+        corpo = self.hitbox
+
+        for i in range(5):
+            angulo = agora / 600 + i * math.tau / 5
+            x = corpo.centerx + math.cos(angulo) * (self.rect.width * 0.6)
+            y = corpo.centery + math.sin(angulo) * (self.rect.height * 0.5)
+            cristal = [(x, y - 9), (x + 5, y), (x, y + 9), (x - 5, y)]
+            pygame.draw.polygon(tela, (190, 235, 255), cristal)
+            pygame.draw.polygon(tela, (255, 255, 255), cristal, 1)
 
     def feiticos_liberados(self):
         liberados = ["orbe"]
@@ -111,27 +172,38 @@ class Feiticeira(Combatente):
     # ---- ciclo principal -----------------------------------------------
     def ao_receber_dano(self, agora):
         self.ultimo_dano = agora
+        self.calma = 0
         self.proxima_acao = max(self.proxima_acao, agora + 400)  # pequena pausa ao ser atingida
 
     def update(self, ctx):
+        passou = max(0, ctx.tempo - self._tempo)
+        self._tempo = ctx.tempo
         self.tempo_voo += 0.06
 
-        self._regenerar(ctx.tempo)
+        self._regenerar(passou)
         self._animar()
         self._reagir_a_ameacas(ctx)
         self._atacar(ctx)
         self._mover(ctx)
         self.mudar_direcao()
 
-    def _regenerar(self, agora):
-        if self.vida < self.vida_maxima and agora - self.ultimo_dano >= self.TEMPO_REGENERACAO:
+    def _regenerar(self, passou):
+        """Sem levar dano por TEMPO_REGENERACAO ms ela recupera 1 vida. Congelada, o contador anda mais devagar."""
+        if self.vida >= self.vida_maxima:
+            self.calma = 0
+            return
+
+        self.calma += passou / (FATOR_GELO if self.congelada(self._tempo) else 1)
+
+        if self.calma >= self.TEMPO_REGENERACAO:
             self.vida += 1
-            self.ultimo_dano = agora
+            self.calma = 0
 
     def _animar(self):
         self.tempo_animacao += 1
+        quadros_por_imagem = 30 * (FATOR_GELO if self.congelada(self._tempo) else 1)
 
-        if self.tempo_animacao >= 30:
+        if self.tempo_animacao >= quadros_por_imagem:
             self.quadro_atual = (self.quadro_atual + 1) % len(self.frames_voando)
             self.tempo_animacao = 0
 

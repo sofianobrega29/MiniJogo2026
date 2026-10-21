@@ -14,6 +14,11 @@ Os feitiços são:
     ParedeMagica   (quadrado) defesa temporária na frente de quem lançou
     Zoltraak       (estrela)  portal que dispara uma rajada de energia
     RaioRoxo       (Z)        raio que cai do céu depois de um aviso
+    Cura           (+)        dois traços cruzados em pé: recupera 1 vida de quem lançou
+    OrbeGelo       (X)        dois traços em diagonal: orbe que não causa dano, mas
+                              deixa o alvo congelado (mais lento) por alguns segundos
+
+Cura e gelo são feitiços de 2 traços (veja reconhecimento.classificar_cruz).
 """
 
 from functools import lru_cache
@@ -32,6 +37,7 @@ from constantes import (
 )
 
 PASTA_UI = Path(__file__).resolve().parent / "imagens" / "UI"
+BRANCO_GELO = (245, 252, 255)
 
 
 # --------------------------------------------------------------------------
@@ -107,6 +113,14 @@ class Feitico:
 
     def ameaca_para(self, alvo, ctx):
         return None
+
+    @classmethod
+    def util(cls, dono):
+        """Vale a pena lançar agora? (a cura, por exemplo, não serve com a vida cheia)"""
+        return True
+
+    def ser_puxado(self, buraco, ctx):
+        """O buraco negro da clone chama isto nos feitiços da Maga. Por padrão não faz nada."""
 
 
 # --------------------------------------------------------------------------
@@ -251,6 +265,18 @@ class OrbeExplosivo(Feitico):
         ctx.adicionar_feitico(
             Explosao(self.dono, self.alvo, ctx.tempo, x, y, normal, self.dano)
         )
+
+    def ser_puxado(self, buraco, ctx):
+        """O buraco negro curva um pouco a trajetória do orbe na direção dele."""
+        puxao, distancia = buraco.forca_em((self.x, self.y))
+
+        if puxao.length_squared() == 0:
+            return
+
+        desejado = math.atan2(puxao.y, puxao.x)
+        limite = math.radians(buraco.giro_feitico) * (0.4 + 0.6 * (1 - distancia / buraco.alcance))
+        diferenca = _diferenca_angular(desejado, self.angulo)
+        self.angulo += limitar(diferenca, -limite, limite)
 
     def desenhar(self, tela):
         for i, (rx, ry) in enumerate(self.rastro):
@@ -442,6 +468,17 @@ class Zoltraak(Feitico):
             if self.alvo.receber_dano(self.dano, ctx.tempo):
                 self.acertou = True
 
+    def ser_puxado(self, buraco, ctx):
+        """Enquanto o portal carrega, o buraco negro desloca um pouco a altura do disparo."""
+        if self.rect_total is not None:
+            return
+
+        puxao, _ = buraco.forca_em((self.portal_x, self.portal_y))
+        self._deriva = getattr(self, "_deriva", 0.0) + puxao.y
+        passo = int(self._deriva)
+        self._deriva -= passo
+        self.portal_y = int(limitar(self.portal_y + passo, 110, ALTURA - 110))
+
     def _disparar(self, ctx):
         """Define até onde a rajada vai: borda da arena ou a parede mágica inimiga."""
         topo = self.portal_y - self.ALTURA_RAJADA // 2
@@ -577,6 +614,18 @@ class RaioRoxo(Feitico):
             self._ultima_forma = ctx.tempo
             self._gerar_forma()
 
+    def ser_puxado(self, buraco, ctx):
+        """Durante o aviso, o buraco negro desloca um pouco o ponto onde o raio vai cair."""
+        if self._fase != "aviso":
+            return
+
+        puxao, _ = buraco.forca_em((self.x, Y_EXPLOSAO_CHAO / 2))  # meio da coluna do raio
+        self._deriva = getattr(self, "_deriva", 0.0) + puxao.x
+        passo = int(self._deriva)
+        self._deriva -= passo
+        self.x = int(limitar(self.x + passo, 50, LARGURA - 50))
+        self.coluna.centerx = self.x
+
     def _gerar_forma(self):
         """Sorteia um traçado em zigue-zague de cima até o chão."""
         sorteio = self._aleatorio
@@ -657,11 +706,133 @@ class RaioRoxo(Feitico):
 
 
 # --------------------------------------------------------------------------
+# Cura (cruz +)
+# --------------------------------------------------------------------------
+class Cura(Feitico):
+    """Recupera 1 vida de quem lançou na hora; o resto é só o efeito visual."""
+
+    NOME = "cura"
+    RECARGA = 15000
+    DANO = 0
+    CAMADA = 5
+
+    DURACAO = 1100
+
+    def __init__(self, dono, alvo, agora, erro=0):
+        super().__init__(dono, alvo, agora, erro)
+        self.curou = dono.curar(1)
+        self.progresso = 0.0
+
+    @classmethod
+    def util(cls, dono):
+        return dono.vivo and dono.vida < dono.vida_maxima
+
+    def update(self, ctx):
+        self.progresso = min(1.0, self.idade(ctx) / self.DURACAO)
+
+        if self.progresso >= 1:
+            self.ativo = False
+
+    def desenhar(self, tela):
+        progresso = self.progresso
+        corpo = self.dono.hitbox
+
+        # Luzes verdes e cruzes subindo em volta de quem foi curado.
+        for i in range(7):
+            angulo = i * math.tau / 7 + progresso * 5
+            x = corpo.centerx + math.cos(angulo) * 42
+            y = corpo.centery + 40 - progresso * 150 + math.sin(angulo) * 18 + (i % 3) * 14
+            pygame.draw.circle(tela, (140, 255, 170), (int(x), int(y)), 5)
+            pygame.draw.line(tela, (230, 255, 235), (x - 7, y), (x + 7, y), 2)
+            pygame.draw.line(tela, (230, 255, 235), (x, y - 7), (x, y + 7), 2)
+
+        anel = corpo.inflate(30 + int(progresso * 40), 20)
+        pygame.draw.ellipse(tela, (140, 255, 170), anel, 2)
+
+
+# --------------------------------------------------------------------------
+# Gelo (X)
+# --------------------------------------------------------------------------
+class EstilhacosGelo(Feitico):
+    """Efeito visual: estilhaços de gelo quando o orbe de gelo acerta."""
+
+    NOME = "estilhacos_gelo"
+    DANO = 0
+    CAMADA = 4
+    DURACAO = 500
+
+    def __init__(self, dono, alvo, agora, x, y):
+        super().__init__(dono, alvo, agora)
+        self.x = x
+        self.y = y
+        self.progresso = 0.0
+
+    def update(self, ctx):
+        self.progresso = min(1.0, self.idade(ctx) / self.DURACAO)
+
+        if self.progresso >= 1:
+            self.ativo = False
+
+    def desenhar(self, tela):
+        raio = 20 + 70 * math.sqrt(self.progresso)
+        tamanho = max(2, int(10 * (1 - self.progresso)))
+
+        for i in range(10):
+            angulo = i * math.tau / 10 + 0.3
+            x = self.x + math.cos(angulo) * raio
+            y = self.y + math.sin(angulo) * raio
+            losango = [(x, y - tamanho * 1.6), (x + tamanho, y), (x, y + tamanho * 1.6), (x - tamanho, y)]
+            pygame.draw.polygon(tela, (190, 235, 255), losango)
+            pygame.draw.polygon(tela, BRANCO_GELO, losango, 1)
+
+        pygame.draw.circle(tela, (150, 215, 255), (int(self.x), int(self.y)), int(raio * 0.55), 3)
+
+
+class OrbeGelo(OrbeExplosivo):
+    """Orbe de gelo: não causa dano. Se acertar, o alvo fica congelado (bem mais lento)."""
+
+    NOME = "gelo"
+    RECARGA = 9000
+    DANO = 0
+    BLOQUEAVEL = True
+    CAMADA = 3
+
+    VELOCIDADE = 10
+    RAIO = 22
+
+    def _explodir(self, ctx, x, y, normal):
+        """Chamado quando o orbe encosta em algo. Só congela se foi o alvo."""
+        self.ativo = False
+
+        if self.retangulo.colliderect(self.alvo.hitbox):
+            self.alvo.congelar(ctx.tempo)
+
+        ctx.adicionar_feitico(EstilhacosGelo(self.dono, self.alvo, ctx.tempo, x, y))
+
+    def desenhar(self, tela):
+        for i, (rx, ry) in enumerate(self.rastro):
+            pygame.draw.circle(tela, (70 + i * 18, 140 + i * 10, 210), (int(rx), int(ry)), 3 + i * 2)
+
+        centro = (int(self.x), int(self.y))
+        pygame.draw.circle(tela, (110, 200, 255), centro, self.RAIO)
+        pygame.draw.circle(tela, (215, 240, 255), centro, self.RAIO - 7)
+        pygame.draw.circle(tela, BRANCO_GELO, centro, 6)
+
+        # Flocos girando em volta.
+        giro = pygame.time.get_ticks() / 140
+
+        for i in range(6):
+            angulo = giro + i * math.pi / 3
+            ponta = (centro[0] + math.cos(angulo) * (self.RAIO + 12), centro[1] + math.sin(angulo) * (self.RAIO + 12))
+            pygame.draw.line(tela, (200, 235, 255), centro, ponta, 2)
+
+
+# --------------------------------------------------------------------------
 # Catálogo
 # --------------------------------------------------------------------------
 CATALOGO = {
     classe.NOME: classe
-    for classe in (OrbeExplosivo, ParedeMagica, Zoltraak, RaioRoxo)
+    for classe in (OrbeExplosivo, ParedeMagica, Zoltraak, RaioRoxo, Cura, OrbeGelo)
 }
 
 # Símbolo desenhado -> feitiço
@@ -670,6 +841,8 @@ GESTOS = {
     "quadrado": "parede",
     "estrela": "zoltraak",
     "raio": "raio",
+    "cura": "cura",   # cruz (+), dois traços
+    "gelo": "gelo",   # X, dois traços
 }
 
 NOMES_EXIBICAO = {
@@ -677,6 +850,8 @@ NOMES_EXIBICAO = {
     "parede": "Parede",
     "zoltraak": "Zoltraak",
     "raio": "Raio",
+    "cura": "Cura",
+    "gelo": "Gelo",
 }
 
 

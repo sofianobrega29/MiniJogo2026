@@ -225,3 +225,63 @@ def reconhecer(pontos):
         return None
 
     return min(aceitos, key=aceitos.get)
+
+
+# --------------------------------------------------------------------------
+# Feitiços de 2 traços: cruz (+) = cura, X = gelo
+# --------------------------------------------------------------------------
+def e_linha(pontos):
+    """True se o traço é (quase) uma reta de tamanho razoável."""
+    if len(pontos) < 6:
+        return False
+
+    a, b = pontos[0], pontos[-1]
+    corda = _distancia(a, b)
+
+    if corda < 60:
+        return False
+
+    dx, dy = (b[0] - a[0]) / corda, (b[1] - a[1]) / corda
+    desvio = max(abs((p[0] - a[0]) * dy - (p[1] - a[1]) * dx) for p in pontos)
+
+    return desvio <= 0.14 * corda and comprimento_total(pontos) <= 1.35 * corda
+
+
+def classificar_cruz(traco_a, traco_b):
+    """Dois traços retos formam uma "cruz" (+), um "x" ou nada (None)?
+
+    Os traços precisam ter tamanhos parecidos, ser quase perpendiculares e se
+    cruzar perto do meio de cada um.
+    """
+    if not (e_linha(traco_a) and e_linha(traco_b)):
+        return None
+
+    a0, a1, b0, b1 = traco_a[0], traco_a[-1], traco_b[0], traco_b[-1]
+    da = (a1[0] - a0[0], a1[1] - a0[1])
+    db = (b1[0] - b0[0], b1[1] - b0[1])
+    la, lb = math.hypot(*da), math.hypot(*db)
+
+    if not 0.4 <= la / lb <= 2.5:
+        return None
+
+    # quase perpendiculares (ângulo entre eles de pelo menos 55 graus)
+    if abs(da[0] * db[0] + da[1] * db[1]) / (la * lb) > math.cos(math.radians(55)):
+        return None
+
+    # onde as retas se cruzam, como fração de cada traço
+    det = db[0] * da[1] - da[0] * db[1]
+
+    if abs(det) < 1e-6:
+        return None
+
+    w = (b0[0] - a0[0], b0[1] - a0[1])
+    ta = (db[0] * w[1] - w[0] * db[1]) / det
+    tb = (da[0] * w[1] - w[0] * da[1]) / det
+
+    if not (0.15 <= ta <= 0.85 and 0.15 <= tb <= 0.85):
+        return None
+
+    angulo = math.degrees(math.atan2(da[1], da[0])) % 90
+    desvio_eixo = min(angulo, 90 - angulo)  # 0 = em pé/deitado (+); 45 = diagonal (X)
+
+    return "cruz" if desvio_eixo <= 22.5 else "x"

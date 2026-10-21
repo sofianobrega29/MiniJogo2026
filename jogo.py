@@ -16,8 +16,10 @@ from constantes import (
     BRANCO,
     AZUL_MAGICO,
     DEBUG_HITBOX,
+    VIDA_BURACO_NEGRO,
 )
-from elementos import Cajado
+from efeitos import TracoMagico
+from elementos import Cajado, BuracoNegro
 from feiticos import CATALOGO, GESTOS, NOMES_EXIBICAO
 from frieren import Maga
 
@@ -97,6 +99,7 @@ class Jogo:
         self.fonte_botao = pygame.font.SysFont("arial", 34, bold=True)
 
         self.cajado = Cajado()
+        self.traco_magico = TracoMagico()
         self.botao_menu = pygame.Rect(LARGURA // 2 - 170, ALTURA - 130, 340, 70)
 
     @staticmethod
@@ -138,6 +141,11 @@ class Jogo:
         self.modo_feitico = False
         self.desenhando = False
         self.pontos_magicos = []
+        self.traco_pendente = None   # 1º traço (reto) de uma cruz/X, esperando o 2º
+        self.pendente_ate = 0
+        self.traco_magico.limpar()
+
+        self.buraco_negro = None     # surge quando a clone chega a VIDA_BURACO_NEGRO
 
         self.mensagem = ""
         self.mensagem_ate = 0
@@ -210,6 +218,7 @@ class Jogo:
                 self.modo_feitico = True
                 self.desenhando = False
                 self.pontos_magicos = []
+                self.traco_magico.limpar()
 
         elif tecla == pygame.K_ESCAPE and self.modo_feitico:
             self._sair_do_modo_feitico()
@@ -221,20 +230,39 @@ class Jogo:
         self.modo_feitico = False
         self.desenhando = False
         self.pontos_magicos = []
+        self.traco_pendente = None
 
     def _mouse_no_modo_feitico(self, evento):
         if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
             self.desenhando = True
             self.pontos_magicos = [evento.pos]
+            self.traco_magico.emitir(evento.pos, 6)
 
         elif evento.type == pygame.MOUSEMOTION and self.desenhando:
             self.pontos_magicos.append(evento.pos)
+            self.traco_magico.emitir(evento.pos)
 
         elif evento.type == pygame.MOUSEBUTTONUP and evento.button == 1 and self.desenhando:
             self._lancar_feitico_desenhado()
 
     def _lancar_feitico_desenhado(self):
-        gesto = reconhecimento.reconhecer(self.pontos_magicos)
+        traco = self.pontos_magicos
+        gesto = reconhecimento.reconhecer(traco)
+
+        if gesto is None and reconhecimento.e_linha(traco):
+            # Cruz (+) = cura e X = gelo são feitiços de 2 traços: guarda o 1º e espera o 2º cruzando.
+            if self.traco_pendente is not None and self.tempo_real <= self.pendente_ate:
+                forma = reconhecimento.classificar_cruz(self.traco_pendente, traco)
+                gesto = {"cruz": "cura", "x": "gelo"}.get(forma)
+
+            if gesto is None:
+                self.traco_pendente = traco
+                self.pendente_ate = self.tempo_real + 3000
+                self.desenhando = False
+                self.pontos_magicos = []
+                self._avisar("Faça o 2º traço cruzando o 1º:  +  = cura   |   X = gelo", 2200)
+                return  # continua no modo de feitiço
+
         self._sair_do_modo_feitico()
 
         if gesto is None:
@@ -242,6 +270,10 @@ class Jogo:
             return
 
         nome = GESTOS[gesto]
+
+        if not CATALOGO[nome].util(self.maga):
+            self._avisar("Sua vida já está cheia!")
+            return
 
         if self.maga.conjurar(nome, self) is not None:
             self._avisar(f"{NOMES_EXIBICAO[nome]}!")
@@ -275,11 +307,21 @@ class Jogo:
         if self.clone.vivo:
             self.clone.update(self)
 
+        self._atualizar_buraco_negro()
+
         for feitico in list(self.feiticos):
             feitico.update(self)
 
         self.feiticos = [f for f in self.feiticos if f.ativo]
         self._verificar_fim()
+
+    def _atualizar_buraco_negro(self):
+        """Com VIDA_BURACO_NEGRO vidas (ou menos) a clone abre um buraco negro, que fica até o fim."""
+        if self.buraco_negro is None and 0 < self.clone.vida <= VIDA_BURACO_NEGRO:
+            self.buraco_negro = BuracoNegro(self.clone.hitbox.center, self.maga, self.tempo)
+
+        if self.buraco_negro is not None:
+            self.buraco_negro.update(self)
 
     def _atualizar_direcoes(self):
         if self.maga.rect.centerx < self.clone.rect.centerx:
@@ -362,9 +404,13 @@ class Jogo:
         self.tela.blit(self.fundo_terceira_pessoa, (0, 0))
         self._desenhar_chao()
 
+        if self.buraco_negro is not None:
+            self.buraco_negro.desenhar(self.tela)
+
         for sprite in self.todos_sprites:
             if sprite.visivel(self.tempo):
-                self.tela.blit(sprite.image, sprite.rect)
+                self.tela.blit(sprite.imagem_visual(self.tempo), sprite.rect)
+                sprite.desenhar_efeitos(self.tela, self.tempo)
 
             if DEBUG_HITBOX:
                 pygame.draw.rect(self.tela, (0, 255, 0), sprite.hitbox, 2)
@@ -375,13 +421,22 @@ class Jogo:
     def _desenhar_cajado(self):
         self.tela.blit(self.fundo_primeira_pessoa, (0, 0))
 
-        if len(self.pontos_magicos) > 1:
-            pygame.draw.lines(self.tela, AZUL_MAGICO, False, self.pontos_magicos, 5)
+        if self.traco_pendente is not None and self.tempo_real > self.pendente_ate:
+            self.traco_pendente = None  # passou o tempo para o 2º traço
+
+        pendentes = [self.traco_pendente] if self.traco_pendente is not None else []
+        self.traco_magico.atualizar()
+        self.traco_magico.desenhar(self.tela, pendentes, self.pontos_magicos)
 
         self.cajado.desenhar(self.tela)
 
         texto = "Desenhe: círculo = orbe | quadrado = parede | estrela = zoltraak | Z = raio"
-        self._texto_com_fundo(texto, self.fonte_dica, (LARGURA // 2, ALTURA - 70))
+        self._texto_com_fundo(texto, self.fonte_dica, (LARGURA // 2, ALTURA - 105))
+        self._texto_com_fundo(
+            "Dois traços cruzados:  +  = cura   |   X = gelo",
+            self.fonte_dica,
+            (LARGURA // 2, ALTURA - 70),
+        )
         self._texto_com_fundo(
             "F ou ESC para cancelar", self.fonte_menor, (LARGURA // 2, ALTURA - 35)
         )
@@ -426,32 +481,43 @@ class Jogo:
         self.tela.blit(texto, (x, 5))
         self.tela.blit(imagem, (x, 35))
 
+        if clone.congelada(self.tempo):
+            aviso = self.fonte_menor.render("CONGELADA", True, (150, 220, 255))
+            self.tela.blit(aviso, (x, 35 + imagem.get_height() + 6))
+
     def _desenhar_painel_feiticos(self):
-        """Quatro quadradinhos (um por feitiço) mostrando a recarga."""
+        """Quadradinhos (um por feitiço) mostrando a recarga.
+
+        Os quatro ataques/defesa ficam no topo; cura e gelo, à esquerda, abaixo da vida.
+        """
         ordem = ["orbe", "parede", "zoltraak", "raio"]
         largura, altura, espaco = 118, 50, 6
         x = (LARGURA - (len(ordem) * largura + (len(ordem) - 1) * espaco)) // 2
 
         for nome in ordem:
-            caixa = pygame.Rect(x, 12, largura, altura)
-            restante = self.maga.recarga_restante(nome, self.tempo)
-            pronto = restante == 0
-
-            pygame.draw.rect(self.tela, (28, 20, 45), caixa, border_radius=8)
-
-            if not pronto:
-                fracao = restante / CATALOGO[nome].RECARGA
-                preenchimento = pygame.Rect(caixa.x, caixa.y, int(caixa.width * (1 - fracao)), caixa.height)
-                pygame.draw.rect(self.tela, (70, 50, 110), preenchimento, border_radius=8)
-
-            cor = ROXO_CLARO if pronto else (150, 140, 165)
-            pygame.draw.rect(self.tela, cor, caixa, width=2, border_radius=8)
-
-            self._desenhar_icone(nome, (caixa.x + 24, caixa.centery), cor)
-            rotulo = self.fonte_menor.render(NOMES_EXIBICAO[nome], True, BRANCO if pronto else (150, 140, 165))
-            self.tela.blit(rotulo, rotulo.get_rect(midleft=(caixa.x + 46, caixa.centery)))
-
+            self._desenhar_caixa_feitico(nome, pygame.Rect(x, 12, largura, altura))
             x += largura + espaco
+
+        for i, nome in enumerate(["cura", "gelo"]):
+            self._desenhar_caixa_feitico(nome, pygame.Rect(20, 125 + i * (altura + 6), largura, altura))
+
+    def _desenhar_caixa_feitico(self, nome, caixa):
+        restante = self.maga.recarga_restante(nome, self.tempo)
+        pronto = restante == 0
+
+        pygame.draw.rect(self.tela, (28, 20, 45), caixa, border_radius=8)
+
+        if not pronto:
+            fracao = restante / CATALOGO[nome].RECARGA
+            preenchimento = pygame.Rect(caixa.x, caixa.y, int(caixa.width * (1 - fracao)), caixa.height)
+            pygame.draw.rect(self.tela, (70, 50, 110), preenchimento, border_radius=8)
+
+        cor = ROXO_CLARO if pronto else (150, 140, 165)
+        pygame.draw.rect(self.tela, cor, caixa, width=2, border_radius=8)
+
+        self._desenhar_icone(nome, (caixa.x + 24, caixa.centery), cor)
+        rotulo = self.fonte_menor.render(NOMES_EXIBICAO[nome], True, BRANCO if pronto else (150, 140, 165))
+        self.tela.blit(rotulo, rotulo.get_rect(midleft=(caixa.x + 46, caixa.centery)))
 
     def _desenhar_icone(self, nome, centro, cor):
         cx, cy = centro
@@ -460,6 +526,14 @@ class Jogo:
             pygame.draw.circle(self.tela, cor, centro, 10, 2)
         elif nome == "parede":
             pygame.draw.rect(self.tela, cor, (cx - 10, cy - 10, 20, 20), 2)
+        elif nome == "cura":
+            pygame.draw.line(self.tela, cor, (cx - 11, cy), (cx + 11, cy), 4)
+            pygame.draw.line(self.tela, cor, (cx, cy - 11), (cx, cy + 11), 4)
+        elif nome == "gelo":
+            pygame.draw.line(self.tela, cor, (cx - 9, cy - 9), (cx + 9, cy + 9), 3)
+            pygame.draw.line(self.tela, cor, (cx - 9, cy + 9), (cx + 9, cy - 9), 3)
+            pygame.draw.line(self.tela, cor, (cx - 12, cy), (cx + 12, cy), 1)
+            pygame.draw.line(self.tela, cor, (cx, cy - 12), (cx, cy + 12), 1)
         elif nome == "zoltraak":
             pontas = [
                 (cx + 12 * math.cos(math.radians(-90 + 72 * k)), cy + 12 * math.sin(math.radians(-90 + 72 * k)))

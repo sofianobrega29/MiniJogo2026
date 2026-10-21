@@ -198,10 +198,13 @@ def tela_instrucoes():
             ("Quadrado", "Parede mágica de defesa"),
             ("Estrela", "Zoltraak: portal que dispara uma rajada"),
             ("Letra Z", "Raio roxo que cai do céu"),
+            ("Cruz (+)", "Cura 1 vida (2 traços cruzados, em pé)"),
+            ("X", "Gelo: congela a clone (2 traços em diagonal)"),
+            ("Buraco negro", "Com 3 vidas a clone abre um: ele te puxa"),
             ("Objetivo", "Zere as 11 vidas da clone sem perder as suas 3")
         ]
 
-        y = 240
+        y = 210
 
         for titulo, descricao in instrucoes:
             desenhar_texto(
@@ -218,7 +221,7 @@ def tela_instrucoes():
                 (LARGURA // 2 + 190, y)
             )
 
-            y += 55
+            y += 42
 
         desenhar_botao("VOLTAR", botao_voltar, mouse)
 

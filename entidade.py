@@ -72,7 +72,22 @@ class Combatente(Entidade):
     def ao_receber_dano(self, agora):
         """Gancho para as subclasses reagirem ao dano."""
 
+    def curar(self, quantidade=1):
+        """Recupera vida (sem passar do máximo). Devolve True se curou."""
+        if not self.vivo or self.vida >= self.vida_maxima:
+            return False
+
+        self.vida = min(self.vida_maxima, self.vida + quantidade)
+        return True
+
     # ---- imagem --------------------------------------------------------
+    def imagem_visual(self, agora):
+        """Imagem que aparece na tela (as subclasses podem tingir, por exemplo)."""
+        return self.image
+
+    def desenhar_efeitos(self, tela, agora):
+        """Gancho para efeitos desenhados por cima do sprite (gelo, aura...)."""
+
     def definir_imagem(self, imagem):
         """Troca o sprite mantendo os pés no mesmo lugar e vira conforme a direção.
 

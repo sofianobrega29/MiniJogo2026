@@ -19,3 +19,8 @@ ROXO_CLARO_RAIO = (215, 175, 255)
 
 # Mostra as caixas de colisão (útil para ajustar o jogo)
 DEBUG_HITBOX = False
+
+# Buraco negro e gelo
+VIDA_BURACO_NEGRO = 3   # a clone abre o buraco negro quando chega a esta vida
+DURACAO_GELO = 6000     # ms que a clone fica congelada
+FATOR_GELO = 1.6        # congelada: movimento, ataques, recargas e regeneração ficam 60% mais lentos
