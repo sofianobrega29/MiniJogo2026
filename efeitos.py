@@ -7,8 +7,8 @@ import pygame
 
 
 def _cor_ao_longo(t):
-    """Cor da trilha: ciano -> violeta -> rosa dourado, do começo ao fim do traço."""
-    pontos = ((90, 230, 255), (170, 130, 255), (255, 175, 225))
+    """Cor da trilha: azul-mana -> ciano -> branco, do começo ao fim do traço (só azul e branco)."""
+    pontos = ((60, 130, 255), (130, 220, 255), (245, 252, 255))
     t = max(0.0, min(1.0, t)) * 2
     i = min(int(t), 1)
     f = t - i
@@ -40,6 +40,7 @@ class TracoMagico:
                 "maximo": 55,
                 "tamanho": random.uniform(2, 5),
                 "estrela": random.random() < 0.35,
+                "cristal": random.random() < 0.14,   # caquinhos de cristal de mana
                 "cor": random.random(),
             })
 
@@ -93,7 +94,7 @@ class TracoMagico:
             pulso = 1 + 0.25 * math.sin(pygame.time.get_ticks() / 70)
 
             for raio, alfa in ((int(26 * pulso), 45), (int(16 * pulso), 110), (int(8 * pulso), 220)):
-                pygame.draw.circle(camada, (190, 240, 255, alfa), (cx, cy), raio)
+                pygame.draw.circle(camada, (170, 225, 255, alfa), (cx, cy), raio)
 
         # Faíscas (pontinhos e estrelinhas de 4 pontas) que piscam e somem.
         agora = pygame.time.get_ticks()
@@ -106,7 +107,12 @@ class TracoMagico:
             x, y = int(faisca["x"]), int(faisca["y"])
             r = faisca["tamanho"] * (0.5 + vida)
 
-            if faisca["estrela"]:
+            if faisca["cristal"]:
+                c = faisca["tamanho"] * 3.2 * (0.5 + vida)
+                forma = [(x, y - c * 1.5), (x + c * 0.7, y), (x, y + c * 1.5), (x - c * 0.7, y)]
+                pygame.draw.polygon(camada, (90, 170, 255, int(alfa * 0.55)), forma)
+                pygame.draw.polygon(camada, (235, 248, 255, max(0, alfa)), forma, 2)
+            elif faisca["estrela"]:
                 pygame.draw.polygon(camada, cor, [
                     (x, y - r * 2), (x + r * 0.5, y - r * 0.5), (x + r * 2, y),
                     (x + r * 0.5, y + r * 0.5), (x, y + r * 2), (x - r * 0.5, y + r * 0.5),

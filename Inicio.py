@@ -1,5 +1,6 @@
 
 import os
+import random
 from pathlib import Path
 
 import pygame
@@ -15,18 +16,14 @@ pygame.display.set_caption("Confronto Mágico")
 
 RELOGIO = pygame.time.Clock()
 
-PRETO = (15, 10, 28)
-ROXO_ESCURO = (35, 18, 58)
-ROXO = (125, 55, 210)
-ROXO_CLARO = (190, 130, 255)
-BRANCO = (245, 240, 255)
-CINZA = (190, 180, 205)
+import estilo
+import grimorio
+from particulas import Particulas
 
-fonte_titulo = pygame.font.SysFont("arial", 88, bold=True)
-fonte_subtitulo = pygame.font.SysFont("arial", 28)
-fonte_botao = pygame.font.SysFont("arial", 34, bold=True)
-fonte_texto = pygame.font.SysFont("arial", 27)
-fonte_pequena = pygame.font.SysFont("arial", 22)
+fonte_botao = estilo.fonte_botao(40)
+
+# Mana flutuando pela tela, para dar vida aos menus.
+AMBIENTE = Particulas(limite=160)
 
 
 CAPA_INICIAL = pygame.image.load(
@@ -43,89 +40,52 @@ CAPA_INICIAL_CORTADA.blit(
 )
 
 
-def desenhar_fundo():
-    TELA.fill(PRETO)
+def atualizar_ambiente():
+    """Solta de vez em quando uma partícula de mana que sobe devagar e some."""
+    if random.random() < 0.35:
+        AMBIENTE.emitir(
+            random.uniform(0, LARGURA),
+            ALTURA + 6,
+            vx=random.uniform(-0.25, 0.25),
+            vy=random.uniform(-1.3, -0.5),
+            vida=random.randint(260, 460),
+            tamanho=random.choice((2, 2, 3)),
+            cor=random.choice(((150, 215, 255), (220, 245, 255), (110, 170, 255))),
+            cor_fim=(14, 24, 60),
+            forma="estrela" if random.random() < 0.4 else "quadrado",
+            atrito=1.0,
+        )
 
-    pygame.draw.rect(
-        TELA,
-        ROXO_ESCURO,
-        (0, 0, LARGURA, ALTURA // 2)
-    )
+    AMBIENTE.update()
 
-    pygame.draw.circle(TELA, ROXO, (100, 120), 5)
-    pygame.draw.circle(TELA, ROXO_CLARO, (1180, 180), 4)
-    pygame.draw.circle(TELA, ROXO, (1080, 720), 6)
-    pygame.draw.circle(TELA, ROXO_CLARO, (180, 760), 4)
 
-    pygame.draw.circle(
-        TELA,
-        ROXO,
-        (LARGURA // 2, 300),
-        150,
-        2
-    )
-
-    pygame.draw.circle(
-        TELA,
-        ROXO_CLARO,
-        (LARGURA // 2, 300),
-        125,
-        2
-    )
-
-    pygame.draw.polygon(
-        TELA,
-        ROXO,
-        [
-            (LARGURA // 2, 120),
-            (LARGURA // 2 + 20, 280),
-            (LARGURA // 2, 300),
-            (LARGURA // 2 - 20, 280)
-        ],
-        2
+def desenhar_botao(texto, retangulo, mouse, indice=0):
+    estilo.desenhar_botao(
+        TELA, retangulo, texto, mouse, pygame.time.get_ticks(), fonte_botao, indice
     )
 
 
-def desenhar_texto(texto, fonte, cor, centro):
-    imagem = fonte.render(texto, True, cor)
-    retangulo = imagem.get_rect(center=centro)
-    TELA.blit(imagem, retangulo)
+def botoes_da_tela_inicial():
+    # Os botões ficam à direita, abaixo do título que já faz parte da capa.
+    x_botoes = int(LARGURA * 0.71) - 170
+    return {
+        "jogar": pygame.Rect(x_botoes, 405, 340, 70),
+        "instrucoes": pygame.Rect(x_botoes, 513, 340, 70),
+        "sair": pygame.Rect(x_botoes, 621, 340, 70)
+    }
 
 
-def desenhar_botao(texto, retangulo, mouse):
-    cor = ROXO_CLARO if retangulo.collidepoint(mouse) else ROXO
+def desenhar_tela_inicial(botoes, mouse):
+    TELA.blit(CAPA_INICIAL_CORTADA, (0, 0))
+    AMBIENTE.desenhar(TELA)
 
-    pygame.draw.rect(
-        TELA,
-        cor,
-        retangulo,
-        border_radius=14
-    )
-
-    pygame.draw.rect(
-        TELA,
-        BRANCO,
-        retangulo,
-        width=2,
-        border_radius=14
-    )
-
-    desenhar_texto(
-        texto,
-        fonte_botao,
-        BRANCO,
-        retangulo.center
-    )
+    desenhar_botao("JOGAR", botoes["jogar"], mouse, 0)
+    desenhar_botao("COMO JOGAR", botoes["instrucoes"], mouse, 1)
+    desenhar_botao("SAIR", botoes["sair"], mouse, 2)
 
 
 def tela_inicial():
-    # Os botões ficam à direita, abaixo do título que já faz parte da capa.
-    x_botoes = int(LARGURA * 0.71) - 170
-    botoes = {
-        "jogar": pygame.Rect(x_botoes, 420, 340, 70),
-        "instrucoes": pygame.Rect(x_botoes, 510, 340, 70),
-        "sair": pygame.Rect(x_botoes, 600, 340, 70)
-    }
+    botoes = botoes_da_tela_inicial()
 
     while True:
         RELOGIO.tick(60)
@@ -146,26 +106,25 @@ def tela_inicial():
                     if botoes["sair"].collidepoint(evento.pos):
                         return "sair"
 
-        TELA.blit(CAPA_INICIAL_CORTADA, (0, 0))
-
-        desenhar_botao("JOGAR", botoes["jogar"], mouse)
-        desenhar_botao("COMO JOGAR", botoes["instrucoes"], mouse)
-        desenhar_botao("SAIR", botoes["sair"], mouse)
-
+        atualizar_ambiente()
+        desenhar_tela_inicial(botoes, mouse)
         pygame.display.flip()
+
+
+BOTAO_VOLTAR = pygame.Rect(LARGURA // 2 - 150, 818, 300, 62)
+
+
+def desenhar_tela_instrucoes(mouse):
+    # A tela "Como jogar" é um grimório (veja grimorio.py).
+    TELA.blit(grimorio.obter(), (0, 0))
+    AMBIENTE.desenhar(TELA)
+    desenhar_botao("VOLTAR", BOTAO_VOLTAR, mouse, 0)
 
 
 def tela_instrucoes():
     while True:
         RELOGIO.tick(60)
         mouse = pygame.mouse.get_pos()
-
-        botao_voltar = pygame.Rect(
-            LARGURA // 2 - 150,
-            750,
-            300,
-            65
-        )
 
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
@@ -177,74 +136,36 @@ def tela_instrucoes():
 
             if evento.type == pygame.MOUSEBUTTONDOWN:
                 if evento.button == 1:
-                    if botao_voltar.collidepoint(evento.pos):
+                    if BOTAO_VOLTAR.collidepoint(evento.pos):
                         return "voltar"
 
-        desenhar_fundo()
-
-        desenhar_texto(
-            "COMO JOGAR",
-            fonte_titulo,
-            ROXO_CLARO,
-            (LARGURA // 2, 130)
-        )
-
-        instrucoes = [
-            ("A / D ou setas", "Mover a maga"),
-            ("W ou seta para cima", "Pular (de novo no ar: voar)"),
-            ("S ou seta para baixo", "Descer; ao tocar o chão, ela pousa"),
-            ("F", "Modo de feitiço (F ou ESC cancela)"),
-            ("Círculo", "Orbe explosivo: explode no chão, parede ou clone"),
-            ("Quadrado", "Parede mágica de defesa"),
-            ("Estrela", "Zoltraak: portal que dispara uma rajada"),
-            ("Letra Z", "Raio roxo que cai do céu"),
-            ("Cruz (+)", "Cura 1 vida (2 traços cruzados, em pé)"),
-            ("X", "Gelo: congela a clone (2 traços em diagonal)"),
-            ("Buraco negro", "Com 3 vidas a clone abre um: ele te puxa"),
-            ("Objetivo", "Zere as 11 vidas da clone sem perder as suas 3")
-        ]
-
-        y = 210
-
-        for titulo, descricao in instrucoes:
-            desenhar_texto(
-                titulo,
-                fonte_texto,
-                ROXO_CLARO,
-                (LARGURA // 2 - 220, y)
-            )
-
-            desenhar_texto(
-                descricao,
-                fonte_pequena,
-                BRANCO,
-                (LARGURA // 2 + 190, y)
-            )
-
-            y += 42
-
-        desenhar_botao("VOLTAR", botao_voltar, mouse)
-
+        atualizar_ambiente()
+        desenhar_tela_instrucoes(mouse)
         pygame.display.flip()
 
 
-rodando = True
+def principal():
+    rodando = True
 
-while rodando:
-    escolha = tela_inicial()
+    while rodando:
+        escolha = tela_inicial()
 
-    if escolha == "jogar":
-        # Se a janela for fechada durante a partida, o programa inteiro encerra.
-        if Jogo(TELA, RELOGIO).executar() == "sair":
+        if escolha == "jogar":
+            # Se a janela for fechada durante a partida, o programa inteiro encerra.
+            if Jogo(TELA, RELOGIO).executar() == "sair":
+                rodando = False
+
+        elif escolha == "instrucoes":
+            resultado = tela_instrucoes()
+
+            if resultado == "sair":
+                rodando = False
+
+        else:
             rodando = False
 
-    elif escolha == "instrucoes":
-        resultado = tela_instrucoes()
+    pygame.quit()
 
-        if resultado == "sair":
-            rodando = False
 
-    else:
-        rodando = False
-
-pygame.quit()
+if __name__ == "__main__":
+    principal()

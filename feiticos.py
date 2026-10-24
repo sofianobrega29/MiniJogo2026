@@ -28,6 +28,7 @@ import random
 
 import pygame
 
+import visuais
 from constantes import (
     LARGURA,
     ALTURA,
@@ -55,6 +56,11 @@ def carregar_imagem(nome, fator=1):
         )
 
     return imagem
+
+
+def _particulas(ctx):
+    """Sistema de partículas do jogo (pode não existir em contextos de teste)."""
+    return getattr(ctx, "particulas", None)
 
 
 def limitar(valor, minimo, maximo):
@@ -241,7 +247,7 @@ class OrbeExplosivo(Feitico):
         # 1) parede mágica do inimigo
         for parede in self.paredes_inimigas(ctx):
             if parede.rect.colliderect(self.retangulo):
-                parede.absorver(ctx.tempo)
+                parede.absorver(ctx.tempo, ctx, (self.x, self.y))
                 self._explodir(ctx, self.x, self.y, (-dx, -dy))
                 return
 
@@ -334,6 +340,7 @@ class ParedeMagica(Feitico):
         self.brilhando = False
 
         sentido = 1 if alvo.rect.centerx >= dono.rect.centerx else -1
+        self.sentido = sentido  # de que lado vêm os ataques
         x = dono.rect.centerx + sentido * (dono.rect.width // 2 + 55)
 
         self.rect = pygame.Rect(0, 0, self.LARGURA_PAREDE, self.ALTURA_PAREDE)
@@ -347,12 +354,61 @@ class ParedeMagica(Feitico):
         imagem = carregar_imagem("escudo.png")
         return pygame.transform.smoothscale(imagem, self.rect.size)
 
-    def absorver(self, agora):
+    def absorver(self, agora, ctx=None, ponto=None):
+        """Segura um golpe. Cada golpe arranca hexágonos do escudo; no último ele se estilhaça."""
         self.durabilidade -= 1
         self.flash_ate = agora + 140
+        quebrou = self.durabilidade <= 0
 
-        if self.durabilidade <= 0:
+        self._perder_hexagonos(ctx, ponto or self.rect.center, 3 if quebrou else 2)
+
+        if quebrou:
             self.ativo = False
+            self._estilhacar(ctx)
+
+    def _perder_hexagonos(self, ctx, ponto, quantidade):
+        """Apaga hexágonos do sprite perto do impacto e solta cacos de vidro."""
+        local_x = limitar(ponto[0] - self.rect.left, 14, self.rect.width - 14)
+        local_y = limitar(ponto[1] - self.rect.top, 14, self.rect.height - 14)
+
+        for i in range(quantidade):
+            deslocamento = (0, 0) if i == 0 else (random.uniform(-34, 34), random.uniform(-34, 34))
+            centro = (local_x + deslocamento[0], local_y + deslocamento[1])
+            visuais.furar_hexagono(self.superficie, centro, 21 if i == 0 else random.randint(13, 18))
+
+        particulas = _particulas(ctx)
+
+        if particulas is not None:
+            saida = math.pi if self.sentido > 0 else 0.0  # os cacos voam para longe de quem atacou
+            particulas.explosao(
+                self.rect.left + local_x, self.rect.top + local_y, 12, 5.2, 46, 2.3,
+                [(110, 205, 255), (180, 235, 255), (150, 220, 255)], cor_fim=(30, 80, 180),
+                gravidade=0.17, formas=("hex", "caco", "caco", "cristal"), angulo=saida, abertura=math.pi * 1.0,
+            )
+
+    def _estilhacar(self, ctx):
+        """O escudo quebra inteiro, como vidro: chuva de hexágonos e cacos."""
+        particulas = _particulas(ctx)
+
+        if particulas is None:
+            return
+
+        for _ in range(46):
+            x = random.uniform(self.rect.left, self.rect.right)
+            y = random.uniform(self.rect.top, self.rect.bottom)
+            para_fora = math.atan2(y - self.rect.centery, x - self.rect.centerx) + random.uniform(-0.6, 0.6)
+            velocidade = random.uniform(1.5, 6.5)
+            particulas.emitir(
+                x, y, math.cos(para_fora) * velocidade, math.sin(para_fora) * velocidade - 1.0,
+                vida=random.randint(34, 62), tamanho=random.uniform(2.0, 3.6),
+                cor=random.choice(((110, 205, 255), (170, 230, 255), (140, 215, 255))), cor_fim=(30, 80, 180),
+                forma=random.choice(("hex", "hex", "caco", "caco", "cristal")), gravidade=0.2,
+            )
+
+        particulas.explosao(
+            self.rect.centerx, self.rect.centery, 16, 7.0, 40, 2.0, [(255, 255, 255), (190, 238, 255)],
+            cor_fim=(40, 100, 220), chance_estrela=0.7, gravidade=0.05,
+        )
 
     def update(self, ctx):
         self.restante = self.DURACAO - self.idade(ctx)
@@ -360,6 +416,13 @@ class ParedeMagica(Feitico):
 
         if self.restante <= 0:
             self.ativo = False
+            particulas = _particulas(ctx)
+
+            if particulas is not None:  # no fim natural só se apaga em faíscas
+                particulas.explosao(
+                    self.rect.centerx, self.rect.centery, 12, 2.5, 34, 2.0, [(190, 235, 255), (255, 255, 255)],
+                    cor_fim=(40, 100, 220), formas=("cristal", "estrela"), gravidade=-0.02,
+                )
 
     def desenhar(self, tela):
         restante = self.restante
@@ -377,17 +440,6 @@ class ParedeMagica(Feitico):
             clarao.fill((255, 255, 255, 0), special_flags=pygame.BLEND_RGB_MAX)  # sprite todo branco
             tela.blit(clarao, self.rect)
 
-        # Rachaduras conforme perde resistência.
-        for i in range(self.RESISTENCIA - self.durabilidade):
-            y = self.rect.top + 60 + i * 70
-            pontos = [
-                (self.rect.left + 4, y),
-                (self.rect.centerx + 4, y + 16),
-                (self.rect.centerx - 6, y + 32),
-                (self.rect.right - 4, y + 50),
-            ]
-            pygame.draw.lines(tela, (255, 255, 255), False, pontos, 2)
-
 
 # --------------------------------------------------------------------------
 # Ataque 2: zoltraak (estrela)
@@ -402,7 +454,7 @@ class Zoltraak(Feitico):
     CARGA = 700        # ms com o portal aberto antes de disparar
     DISPARO = 550      # ms com a rajada ativa
     DESVANECE = 250    # ms de encerramento
-    ALTURA_RAJADA = 56
+    ALTURA_RAJADA = 84  # feixe grosso, como no anime
     CRESCIMENTO = 120  # ms que a rajada leva para chegar ao fim do alcance
 
     def __init__(self, dono, alvo, agora, erro=0):
@@ -422,6 +474,7 @@ class Zoltraak(Feitico):
         self.acertou = False
         self._escala_portal = 0.2
         self._espessura = 1.0
+        self._cauda = 0
 
     # ---- lógica --------------------------------------------------------
     def update(self, ctx):
@@ -430,6 +483,14 @@ class Zoltraak(Feitico):
 
         if idade >= total:
             self.ativo = False
+            particulas = _particulas(ctx)
+
+            if particulas is not None:
+                particulas.explosao(
+                    self.portal_x, self.portal_y, 16, 4.5, 36, 2.2, [(255, 255, 255), (170, 225, 255)],
+                    cor_fim=(30, 70, 200), chance_estrela=0.6, atrito=0.95,
+                )
+
             return
 
         # Animação do portal: abre no começo e fecha no fim.
@@ -440,33 +501,89 @@ class Zoltraak(Feitico):
         else:
             self._escala_portal = 1.0
 
+        particulas = _particulas(ctx)
+
         if idade < self.CARGA:
+            self._particulas_da_carga(particulas, idade)
             return
 
         if self.rect_total is None:
             self._disparar(ctx)
 
         fracao = limitar((idade - self.CARGA) / self.CRESCIMENTO, 0, 1)
-        comprimento = int(self.rect_total.width * fracao)
+        cabeca = int(self.rect_total.width * fracao)
+
+        # No final a cauda avança em direção à ponta e a luz que fica para trás se desfaz em estrelas.
+        fim_disparo = self.CARGA + self.DISPARO
+        p_fim = limitar((idade - fim_disparo) / self.DESVANECE, 0, 1) if idade > fim_disparo else 0.0
+        self._espessura = 1.0 - 0.75 * p_fim
+        self._cauda = int(self.rect_total.width * p_fim ** 1.5)
+        comprimento = max(0, cabeca - self._cauda)
 
         if self.sentido > 0:
             self.rect_visivel = pygame.Rect(
-                self.rect_total.left, self.rect_total.top, comprimento, self.rect_total.height
+                self.rect_total.left + self._cauda, self.rect_total.top, comprimento, self.rect_total.height
             )
         else:
             self.rect_visivel = pygame.Rect(
-                self.rect_total.right - comprimento,
-                self.rect_total.top,
-                comprimento,
-                self.rect_total.height,
+                self.rect_total.right - cabeca, self.rect_total.top, comprimento, self.rect_total.height
             )
 
-        if idade > self.CARGA + self.DISPARO:
-            self._espessura = max(0.15, (total - idade) / self.DESVANECE)
+        if particulas is not None and comprimento > 4:
+            self._particulas_do_feixe(particulas, fracao, p_fim)
 
         if not self.acertou and self.rect_visivel.colliderect(self.alvo.hitbox):
             if self.alvo.receber_dano(self.dano, ctx.tempo):
                 self.acertou = True
+
+    def _particulas_da_carga(self, particulas, idade):
+        """Enquanto o portal carrega, faíscas de mana são sugadas para dentro dele."""
+        if particulas is None or idade < 180:
+            return
+
+        for _ in range(1 + (idade > self.CARGA - 280)):
+            angulo = random.uniform(0, math.tau)
+            distancia = random.uniform(70, 140)
+            vida = 18
+            particulas.emitir(
+                self.portal_x + math.cos(angulo) * distancia * 0.7, self.portal_y + math.sin(angulo) * distancia,
+                -math.cos(angulo) * distancia * 0.7 / vida, -math.sin(angulo) * distancia / vida,
+                vida=vida, tamanho=random.uniform(1.4, 2.4), cor=random.choice(((170, 225, 255), (255, 255, 255))),
+                cor_fim=(20, 50, 140), forma="estrela" if random.random() < 0.3 else "quadrado", atrito=1.0,
+            )
+
+    def _particulas_do_feixe(self, particulas, fracao, p_fim):
+        r = self.rect_visivel
+        cores = [(255, 255, 255), (190, 235, 255), (120, 200, 255)]
+
+        if p_fim == 0:
+            # faíscas saltando das bordas do feixe enquanto ele está aceso
+            for _ in range(3):
+                x = random.uniform(r.left, r.right)
+                y = r.centery + random.choice((-1, 1)) * r.height * random.uniform(0.35, 0.65) * self._espessura
+                particulas.emitir(
+                    x, y, -self.sentido * random.uniform(0.2, 1.4), (y - r.centery) / r.height * random.uniform(1.0, 3.0),
+                    vida=random.randint(16, 32), tamanho=random.uniform(1.2, 2.4), cor=random.choice(cores),
+                    cor_fim=(30, 70, 200), forma="estrela" if random.random() < 0.3 else "quadrado",
+                )
+
+            if fracao < 1:  # clarão na ponta enquanto o feixe corre
+                ponta = r.right if self.sentido > 0 else r.left
+                particulas.explosao(ponta, r.centery, 4, 4.0, 14, 2.0, cores, cor_fim=(40, 100, 230), chance_estrela=0.5)
+        else:
+            # cauda se desfazendo: estrelinhas do resto da luz, flutuando para trás e para cima
+            cauda_x = r.left if self.sentido > 0 else r.right
+            para_tras = math.pi if self.sentido > 0 else 0.0
+
+            for _ in range(9):
+                y = r.centery + random.uniform(-0.5, 0.5) * r.height * self._espessura * 1.6
+                particulas.emitir(
+                    cauda_x + random.uniform(-6, 6), y,
+                    math.cos(para_tras + random.uniform(-1.1, 1.1)) * random.uniform(0.6, 3.2),
+                    random.uniform(-2.6, 0.8), vida=random.randint(34, 58), tamanho=random.uniform(2.4, 4.2),
+                    cor=random.choice(cores), cor_fim=(30, 70, 210),
+                    forma="estrela" if random.random() < 0.55 else "quadrado", gravidade=-0.03, atrito=0.96,
+                )
 
     def ser_puxado(self, buraco, ctx):
         """Enquanto o portal carrega, o buraco negro desloca um pouco a altura do disparo."""
@@ -496,55 +613,31 @@ class Zoltraak(Feitico):
             if self.sentido > 0 and parede.rect.left >= self.portal_x:
                 if parede.rect.left < fim:
                     fim = parede.rect.left
-                    parede.absorver(ctx.tempo)
+                    parede.absorver(ctx.tempo, ctx, (parede.rect.left, self.portal_y))
             elif self.sentido < 0 and parede.rect.right <= self.portal_x:
                 if parede.rect.right > inicio:
                     inicio = parede.rect.right
-                    parede.absorver(ctx.tempo)
+                    parede.absorver(ctx.tempo, ctx, (parede.rect.right, self.portal_y))
 
         self.rect_total = pygame.Rect(inicio, topo, max(1, fim - inicio), self.ALTURA_RAJADA)
 
     # ---- desenho -------------------------------------------------------
     def desenhar(self, tela):
         if self.rect_visivel is not None and self.rect_visivel.width > 2:
-            self._desenhar_rajada(tela)
+            afunilar = 50 + int(160 * (1 - self._espessura))
+            visuais.desenhar_feixe(
+                tela, self.rect_visivel, self._espessura, self.sentido, afunilar, pygame.time.get_ticks()
+            )
 
         largura, altura = self.portal.get_size()
         escala = self._escala_portal
+        visuais.brilho_elipse(
+            tela, (self.portal_x, self.portal_y), largura * escala * 0.9, altura * escala * 0.9, (70, 150, 255), 8, 100
+        )
         portal = pygame.transform.scale(
             self.portal, (max(2, int(largura * escala)), max(2, int(altura * escala)))
         )
         tela.blit(portal, portal.get_rect(center=(self.portal_x, self.portal_y)))
-
-    def _desenhar_rajada(self, tela):
-        retangulo = self.rect_visivel
-        altura = max(4, int(retangulo.height * self._espessura))
-        comprimento = retangulo.width
-
-        largura_ponta = 12
-        largura_corpo = max(1, comprimento - largura_ponta)
-
-        corpo = self.sprite_rajada.subsurface((0, 0, 16, 20))
-        ponta = self.sprite_rajada.subsurface((16, 0, 4, 20))
-
-        superficie = pygame.Surface((comprimento, altura), pygame.SRCALPHA)
-        superficie.blit(pygame.transform.scale(corpo, (largura_corpo, altura)), (0, 0))
-
-        if comprimento > largura_ponta:
-            superficie.blit(
-                pygame.transform.scale(ponta, (largura_ponta, altura)),
-                (comprimento - largura_ponta, 0),
-            )
-
-        if self.sentido < 0:
-            superficie = pygame.transform.flip(superficie, True, False)
-
-        if self.sentido > 0:
-            posicao = superficie.get_rect(midleft=retangulo.midleft)
-        else:
-            posicao = superficie.get_rect(midright=retangulo.midright)
-
-        tela.blit(superficie, posicao)
 
     def ameaca_para(self, alvo, ctx):
         if self.alvo is not alvo or self.idade(ctx) >= self.CARGA:
@@ -589,6 +682,8 @@ class RaioRoxo(Feitico):
         self._progresso = 0.0
         self._aleatorio = random.Random()
         self.marcador = pygame.Surface(self.coluna.size, pygame.SRCALPHA)
+        self._golpeou = False
+        self._flash = 0.0
 
     def update(self, ctx):
         idade = self.idade(ctx)
@@ -598,21 +693,61 @@ class RaioRoxo(Feitico):
             self.ativo = False
             return
 
+        particulas = _particulas(ctx)
+
         if idade < self.AVISO:
             self._fase = "aviso"
             self._progresso = idade / self.AVISO
+
+            if particulas is not None and self._aleatorio.random() < 0.5:  # estalinhos de energia no chão, carregando
+                particulas.emitir(
+                    self.x + self._aleatorio.uniform(-self.LARGURA_COLUNA / 2, self.LARGURA_COLUNA / 2), Y_EXPLOSAO_CHAO,
+                    self._aleatorio.uniform(-0.6, 0.6), self._aleatorio.uniform(-2.5, -0.8), vida=14, tamanho=1.6,
+                    cor=ROXO_CLARO_RAIO, cor_fim=(60, 20, 140), forma="faisca",
+                )
+
             return
 
         self._fase = "golpe" if idade < self.AVISO + self.GOLPE else "fim"
         self._progresso = limitar((idade - self.AVISO - self.GOLPE) / self.DESVANECE, 0, 1)
+        self._flash = max(0.0, 1.0 - (idade - self.AVISO) / 90)
+
+        if particulas is not None:
+            self._particulas_do_raio(particulas)
 
         if not self.acertou and self.coluna.colliderect(self.alvo.hitbox):
             if self.alvo.receber_dano(self.dano, ctx.tempo):
                 self.acertou = True
 
-        if ctx.tempo - self._ultima_forma >= 45:
+        if ctx.tempo - self._ultima_forma >= 30:
             self._ultima_forma = ctx.tempo
             self._gerar_forma()
+
+    def _particulas_do_raio(self, particulas):
+        """Faíscas elétricas: uma explosão no impacto e fagulhas saltando do raio, que caem como brasas."""
+        cores = [(255, 250, 255), (215, 180, 255), (160, 100, 255)]
+
+        if not self._golpeou:
+            self._golpeou = True
+            particulas.explosao(
+                self.x, Y_EXPLOSAO_CHAO, 30, 8.0, 32, 2.2, cores, cor_fim=(60, 20, 150), gravidade=0.22,
+                angulo=-math.pi / 2, abertura=math.pi * 0.95, formas=("faisca", "faisca", "estrela", "quadrado"),
+            )
+
+        if len(self.pontos) < 3:
+            return
+
+        quantidade = 2 if self._fase == "golpe" else 4  # no fim o raio se desfaz soltando mais fagulhas
+
+        for _ in range(quantidade):
+            x, y = self._aleatorio.choice(self.pontos[1:-1])
+            lado = self._aleatorio.choice((-1, 1))
+            particulas.emitir(
+                x, y, lado * self._aleatorio.uniform(1.5, 5.0), self._aleatorio.uniform(-1.5, 1.0),
+                vida=self._aleatorio.randint(8, 18), tamanho=self._aleatorio.uniform(1.2, 2.2),
+                cor=self._aleatorio.choice(cores), cor_fim=(70, 30, 160), forma="faisca",
+                gravidade=0.18 if self._fase == "fim" else 0.0,
+            )
 
     def ser_puxado(self, buraco, ctx):
         """Durante o aviso, o buraco negro desloca um pouco o ponto onde o raio vai cair."""
@@ -674,24 +809,12 @@ class RaioRoxo(Feitico):
         pygame.draw.ellipse(tela, ROXO_RAIO, marca, 4)
 
     def _desenhar_raio(self, tela):
-        if len(self.pontos) < 2:
-            return
-
         fino = 1.0 - self._progresso * 0.8
-
-        for largura, cor in (
-            (int(26 * fino), (95, 35, 190)),
-            (int(14 * fino), ROXO_RAIO),
-            (max(2, int(5 * fino)), (245, 235, 255)),
-        ):
-            pygame.draw.lines(tela, cor, False, self.pontos, max(1, largura))
-
-        for ramo in self.ramos:
-            pygame.draw.lines(tela, ROXO_CLARO_RAIO, False, ramo, max(1, int(4 * fino)))
-
-        impacto = pygame.Rect(0, 0, int(150 * fino), int(40 * fino))
-        impacto.center = (self.x, Y_EXPLOSAO_CHAO)
-        pygame.draw.ellipse(tela, ROXO_CLARO_RAIO, impacto)
+        fase_fim = self._progresso if self._fase == "fim" else 0.0
+        visuais.desenhar_relampago(
+            tela, self.pontos, self.ramos, fino, fase_fim, self._aleatorio,
+            ROXO_RAIO, ROXO_CLARO_RAIO, Y_EXPLOSAO_CHAO, self.x, self._flash,
+        )
 
     def ameaca_para(self, alvo, ctx):
         if self.alvo is not alvo or self.idade(ctx) >= self.AVISO - 120:
@@ -709,45 +832,78 @@ class RaioRoxo(Feitico):
 # Cura (cruz +)
 # --------------------------------------------------------------------------
 class Cura(Feitico):
-    """Recupera 1 vida de quem lançou na hora; o resto é só o efeito visual."""
+    """Recupera 1 vida de quem lançou na hora; o resto é um feixe de luz verde que sobe rápido."""
 
     NOME = "cura"
     RECARGA = 15000
     DANO = 0
     CAMADA = 5
 
-    DURACAO = 1100
+    CRESCIMENTO = 110   # ms que o feixe leva para subir
+    SEGURA = 170        # ms aceso
+    DURACAO = 800       # ms no total (o resto é a luz se desfazendo)
+    LARGURA_FEIXE = 78
 
     def __init__(self, dono, alvo, agora, erro=0):
         super().__init__(dono, alvo, agora, erro)
         self.curou = dono.curar(1)
-        self.progresso = 0.0
+        self.idade_atual = 0
+        self._brilhou = False
 
     @classmethod
     def util(cls, dono):
         return dono.vivo and dono.vida < dono.vida_maxima
 
     def update(self, ctx):
-        self.progresso = min(1.0, self.idade(ctx) / self.DURACAO)
+        self.idade_atual = self.idade(ctx)
 
-        if self.progresso >= 1:
+        if self.idade_atual >= self.DURACAO:
             self.ativo = False
+            return
+
+        particulas = _particulas(ctx)
+
+        if particulas is None:
+            return
+
+        corpo = self.dono.hitbox
+        verdes = [(190, 255, 205), (255, 255, 255), (110, 240, 150)]
+
+        if not self._brilhou:
+            self._brilhou = True
+            particulas.explosao(
+                corpo.centerx, corpo.bottom - 6, 20, 5.0, 30, 2.2, verdes, cor_fim=(30, 140, 80),
+                angulo=-math.pi / 2, abertura=math.pi * 0.9, chance_estrela=0.5, gravidade=-0.02,
+            )
+
+        if self.CRESCIMENTO <= self.idade_atual < self.CRESCIMENTO + self.SEGURA + 250:
+            for _ in range(3):  # estrelinhas verdes subindo pelo feixe
+                particulas.emitir(
+                    corpo.centerx + random.uniform(-self.LARGURA_FEIXE * 0.45, self.LARGURA_FEIXE * 0.45),
+                    random.uniform(max(0, corpo.top - 300), corpo.bottom), random.uniform(-0.4, 0.4),
+                    random.uniform(-3.2, -1.2), vida=random.randint(22, 40), tamanho=random.uniform(1.8, 3.2),
+                    cor=random.choice(verdes), cor_fim=(30, 140, 80), forma="estrela" if random.random() < 0.5 else "quadrado",
+                )
 
     def desenhar(self, tela):
-        progresso = self.progresso
         corpo = self.dono.hitbox
+        idade = self.idade_atual
+        p_cresce = limitar(idade / self.CRESCIMENTO, 0, 1)
+        p_fim = limitar((idade - self.CRESCIMENTO - self.SEGURA) / (self.DURACAO - self.CRESCIMENTO - self.SEGURA), 0, 1)
 
-        # Luzes verdes e cruzes subindo em volta de quem foi curado.
-        for i in range(7):
-            angulo = i * math.tau / 7 + progresso * 5
-            x = corpo.centerx + math.cos(angulo) * 42
-            y = corpo.centery + 40 - progresso * 150 + math.sin(angulo) * 18 + (i % 3) * 14
-            pygame.draw.circle(tela, (140, 255, 170), (int(x), int(y)), 5)
-            pygame.draw.line(tela, (230, 255, 235), (x - 7, y), (x + 7, y), 2)
-            pygame.draw.line(tela, (230, 255, 235), (x, y - 7), (x, y + 7), 2)
+        altura_total = corpo.bottom
+        cabeca = int(altura_total * p_cresce)
+        cauda = int(altura_total * p_fim ** 1.4)  # a cauda sobe e a luz vai se apagando
+        altura = cabeca - cauda
 
-        anel = corpo.inflate(30 + int(progresso * 40), 20)
-        pygame.draw.ellipse(tela, (140, 255, 170), anel, 2)
+        if altura > 8:
+            visuais.desenhar_coluna(
+                tela, corpo.centerx, corpo.bottom - cauda, altura, self.LARGURA_FEIXE, 1.0 - 0.8 * p_fim,
+                60 + 140 * p_fim, pygame.time.get_ticks(), visuais.PALETA_VERDE,
+            )
+
+        if p_fim < 1:  # halo verde no chão, onde a luz nasce
+            visuais.brilho_elipse(tela, (corpo.centerx, corpo.bottom - 4), 190 * (1 - 0.5 * p_fim), 46, (80, 240, 140), 8, 110)
 
 
 # --------------------------------------------------------------------------
@@ -789,7 +945,7 @@ class EstilhacosGelo(Feitico):
 
 
 class OrbeGelo(OrbeExplosivo):
-    """Orbe de gelo: não causa dano. Se acertar, o alvo fica congelado (bem mais lento)."""
+    """Floco de gelo veloz: não causa dano. Se acertar, o alvo fica congelado (bem mais lento)."""
 
     NOME = "gelo"
     RECARGA = 9000
@@ -797,34 +953,40 @@ class OrbeGelo(OrbeExplosivo):
     BLOQUEAVEL = True
     CAMADA = 3
 
-    VELOCIDADE = 10
-    RAIO = 22
+    VELOCIDADE = 16
+    RAIO = 20
+
+    def update(self, ctx):
+        super().update(ctx)
+        particulas = _particulas(ctx)
+
+        if particulas is not None and self.ativo:  # rastro de cristais de gelo
+            for _ in range(2):
+                particulas.emitir(
+                    self.x + random.uniform(-8, 8), self.y + random.uniform(-8, 8),
+                    random.uniform(-0.6, 0.6), random.uniform(-0.6, 0.6), vida=random.randint(14, 26),
+                    tamanho=random.uniform(1.8, 3.2), cor=random.choice(((255, 255, 255), (190, 235, 255), (140, 210, 255))),
+                    cor_fim=(40, 90, 200), forma=random.choice(("cristal", "estrela", "quadrado")),
+                )
 
     def _explodir(self, ctx, x, y, normal):
-        """Chamado quando o orbe encosta em algo. Só congela se foi o alvo."""
+        """Chamado quando o floco encosta em algo. Só congela se foi o alvo."""
         self.ativo = False
 
         if self.retangulo.colliderect(self.alvo.hitbox):
             self.alvo.congelar(ctx.tempo)
 
         ctx.adicionar_feitico(EstilhacosGelo(self.dono, self.alvo, ctx.tempo, x, y))
+        particulas = _particulas(ctx)
+
+        if particulas is not None:
+            particulas.explosao(
+                x, y, 22, 6.0, 38, 2.4, [(255, 255, 255), (190, 235, 255), (130, 205, 255)], cor_fim=(40, 90, 200),
+                formas=("cristal", "estrela", "quadrado", "caco"), gravidade=0.06,
+            )
 
     def desenhar(self, tela):
-        for i, (rx, ry) in enumerate(self.rastro):
-            pygame.draw.circle(tela, (70 + i * 18, 140 + i * 10, 210), (int(rx), int(ry)), 3 + i * 2)
-
-        centro = (int(self.x), int(self.y))
-        pygame.draw.circle(tela, (110, 200, 255), centro, self.RAIO)
-        pygame.draw.circle(tela, (215, 240, 255), centro, self.RAIO - 7)
-        pygame.draw.circle(tela, BRANCO_GELO, centro, 6)
-
-        # Flocos girando em volta.
-        giro = pygame.time.get_ticks() / 140
-
-        for i in range(6):
-            angulo = giro + i * math.pi / 3
-            ponta = (centro[0] + math.cos(angulo) * (self.RAIO + 12), centro[1] + math.sin(angulo) * (self.RAIO + 12))
-            pygame.draw.line(tela, (200, 235, 255), centro, ponta, 2)
+        visuais.desenhar_floco(tela, (int(self.x), int(self.y)), self.RAIO + 12, pygame.time.get_ticks() / 190)
 
 
 # --------------------------------------------------------------------------

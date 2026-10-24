@@ -5,7 +5,9 @@ import cv2
 
 import pygame
 
+import estilo
 import reconhecimento
+from cenario import ChaoTemplo
 from clone import Feiticeira
 from constantes import (
     LARGURA,
@@ -22,10 +24,13 @@ from efeitos import TracoMagico
 from elementos import Cajado, BuracoNegro
 from feiticos import CATALOGO, GESTOS, NOMES_EXIBICAO
 from frieren import Maga
+from particulas import Particulas
 
 PASTA_IMAGENS = Path(__file__).resolve().parent / "imagens"
 PASTA_VIDEOS = PASTA_IMAGENS / "Video"
-CAMINHO_VIDEO_VITORIA = PASTA_VIDEOS / "vitoria.mp4"
+CAMINHO_VIDEO_ORIGINAL = PASTA_VIDEOS / "vitoria.mp4"
+CAMINHO_VIDEO_HD = PASTA_VIDEOS / "vitoria_hd.mp4"  # versão ampliada e tratada (veja tratar_video.py)
+CAMINHO_VIDEO_VITORIA = CAMINHO_VIDEO_HD if CAMINHO_VIDEO_HD.exists() else CAMINHO_VIDEO_ORIGINAL
 
 ROXO = (125, 55, 210)
 ROXO_CLARO = (190, 130, 255)
@@ -96,11 +101,13 @@ class Jogo:
         self.fonte_mensagem = pygame.font.SysFont(None, 44)
         self.fonte_titulo = pygame.font.SysFont("arial", 84, bold=True)
         self.fonte_subtitulo = pygame.font.SysFont("arial", 30)
-        self.fonte_botao = pygame.font.SysFont("arial", 34, bold=True)
+        self.fonte_botao = estilo.fonte_botao(36)
+        self.fonte_caixa = estilo.fonte_botao(22)
+        self.fonte_aviso = estilo.fonte(estilo.FONTE_GRIMORIO_TEXTO, 30)
 
         self.cajado = Cajado()
         self.traco_magico = TracoMagico()
-        self.botao_menu = pygame.Rect(LARGURA // 2 - 170, ALTURA - 130, 340, 70)
+        self.botao_menu = pygame.Rect(LARGURA // 2 - 195, ALTURA - 130, 390, 70)
 
     @staticmethod
     def _carregar_capa(nome):
@@ -137,6 +144,8 @@ class Jogo:
         self.todos_sprites.add(self.maga, self.clone)
 
         self.feiticos = []
+        self.particulas = Particulas()
+        self.chao = ChaoTemplo()   # chão de pedra (racha com o buraco negro)
 
         self.modo_feitico = False
         self.desenhando = False
@@ -313,6 +322,7 @@ class Jogo:
             feitico.update(self)
 
         self.feiticos = [f for f in self.feiticos if f.ativo]
+        self.particulas.update()
         self._verificar_fim()
 
     def _atualizar_buraco_negro(self):
@@ -388,17 +398,7 @@ class Jogo:
             self._desenhar_tela_final()
 
     def _desenhar_chao(self):
-        pygame.draw.rect(
-            self.tela, (255, 231, 176), (0, ALTURA - ALTURA_CHAO, LARGURA, ALTURA_CHAO)
-        )
-
-        for x in range(0, LARGURA, 60):
-            pygame.draw.line(
-                self.tela, (45, 42, 50), (x, ALTURA - ALTURA_CHAO), (x, ALTURA), 2
-            )
-
-        for y in range(ALTURA - ALTURA_CHAO, ALTURA, 40):
-            pygame.draw.line(self.tela, (45, 42, 50), (0, y), (LARGURA, y), 2)
+        self.chao.desenhar(self.tela)
 
     def _desenhar_arena(self):
         self.tela.blit(self.fundo_terceira_pessoa, (0, 0))
@@ -418,6 +418,8 @@ class Jogo:
         for feitico in sorted(self.feiticos, key=lambda f: f.CAMADA):
             feitico.desenhar(self.tela)
 
+        self.particulas.desenhar(self.tela)
+
     def _desenhar_cajado(self):
         self.tela.blit(self.fundo_primeira_pessoa, (0, 0))
 
@@ -431,22 +433,24 @@ class Jogo:
         self.cajado.desenhar(self.tela)
 
         texto = "Desenhe: círculo = orbe | quadrado = parede | estrela = zoltraak | Z = raio"
-        self._texto_com_fundo(texto, self.fonte_dica, (LARGURA // 2, ALTURA - 105))
+        self._texto_com_fundo(texto, self.fonte_aviso, (LARGURA // 2, ALTURA - 128))
         self._texto_com_fundo(
             "Dois traços cruzados:  +  = cura   |   X = gelo",
-            self.fonte_dica,
-            (LARGURA // 2, ALTURA - 70),
+            self.fonte_aviso,
+            (LARGURA // 2, ALTURA - 76),
         )
         self._texto_com_fundo(
-            "F ou ESC para cancelar", self.fonte_menor, (LARGURA // 2, ALTURA - 35)
+            "F ou ESC para cancelar", self.fonte_aviso, (LARGURA // 2, ALTURA - 24)
         )
 
     def _texto_com_fundo(self, texto, fonte, centro):
-        imagem = fonte.render(texto, True, BRANCO)
+        """Texto sobre uma faixa de vidro escuro com fio de mana."""
+        imagem = fonte.render(texto, True, estilo.MANA_BRANCO)
         retangulo = imagem.get_rect(center=centro)
 
-        fundo = pygame.Surface((retangulo.width + 24, retangulo.height + 12), pygame.SRCALPHA)
-        fundo.fill((10, 8, 20, 190))
+        fundo = pygame.Surface((retangulo.width + 40, retangulo.height + 14), pygame.SRCALPHA)
+        pygame.draw.rect(fundo, (8, 14, 40, 205), fundo.get_rect(), border_radius=10)
+        pygame.draw.rect(fundo, (*estilo.MANA_AZUL, 230), fundo.get_rect(), 2, border_radius=10)
         self.tela.blit(fundo, fundo.get_rect(center=centro))
         self.tela.blit(imagem, retangulo)
 
@@ -462,7 +466,7 @@ class Jogo:
             self.tela.blit(texto, (20, 90))
 
         if self.tempo_real < self.mensagem_ate and self.mensagem:
-            self._texto_com_fundo(self.mensagem, self.fonte_mensagem, (LARGURA // 2, 130))
+            self._texto_com_fundo(self.mensagem, estilo.fonte(estilo.FONTE_GRIMORIO_TEXTO, 38), (LARGURA // 2, 150))
 
     def _desenhar_vidas_maga(self):
         self.tela.blit(self.fonte_menor.render("MAGA", True, BRANCO), (20, 15))
@@ -491,7 +495,7 @@ class Jogo:
         Os quatro ataques/defesa ficam no topo; cura e gelo, à esquerda, abaixo da vida.
         """
         ordem = ["orbe", "parede", "zoltraak", "raio"]
-        largura, altura, espaco = 118, 50, 6
+        largura, altura, espaco = 126, 50, 6
         x = (LARGURA - (len(ordem) * largura + (len(ordem) - 1) * espaco)) // 2
 
         for nome in ordem:
@@ -504,20 +508,16 @@ class Jogo:
     def _desenhar_caixa_feitico(self, nome, caixa):
         restante = self.maga.recarga_restante(nome, self.tempo)
         pronto = restante == 0
+        carga = 1.0 if pronto else 1 - restante / CATALOGO[nome].RECARGA
 
-        pygame.draw.rect(self.tela, (28, 20, 45), caixa, border_radius=8)
+        estilo.desenhar_caixa_feitico(self.tela, caixa, carga, pygame.time.get_ticks())
 
-        if not pronto:
-            fracao = restante / CATALOGO[nome].RECARGA
-            preenchimento = pygame.Rect(caixa.x, caixa.y, int(caixa.width * (1 - fracao)), caixa.height)
-            pygame.draw.rect(self.tela, (70, 50, 110), preenchimento, border_radius=8)
-
-        cor = ROXO_CLARO if pronto else (150, 140, 165)
-        pygame.draw.rect(self.tela, cor, caixa, width=2, border_radius=8)
-
+        cor = estilo.MANA_BRANCO if pronto else (118, 148, 196)
         self._desenhar_icone(nome, (caixa.x + 24, caixa.centery), cor)
-        rotulo = self.fonte_menor.render(NOMES_EXIBICAO[nome], True, BRANCO if pronto else (150, 140, 165))
-        self.tela.blit(rotulo, rotulo.get_rect(midleft=(caixa.x + 46, caixa.centery)))
+
+        brilho = estilo.MANA_AZUL if pronto else (40, 70, 140)
+        rotulo = estilo.texto_brilhante(NOMES_EXIBICAO[nome], self.fonte_caixa, cor, brilho, raio=6, forca=1 if pronto else 0)
+        self.tela.blit(rotulo, rotulo.get_rect(midleft=(caixa.x + 42 - 12, caixa.centery)))
 
     def _desenhar_icone(self, nome, centro, cor):
         cx, cy = centro
@@ -571,16 +571,18 @@ class Jogo:
                         quadro = pygame.surfarray.make_surface(
                             quadro.swapaxes(0, 1)
                         )
-                        self.quadro_vitoria = pygame.transform.scale(
-                            quadro, (LARGURA, ALTURA)
-                        )
+                        self.quadro_vitoria = self._ajustar_quadro(quadro)
                     else:
                         self.video_vitoria.release()
                         self.video_vitoria = None
                         self.quadro_vitoria = None
 
                 if self.quadro_vitoria is not None:
-                    self.tela.blit(self.quadro_vitoria, (0, 0))
+                    self.tela.fill((0, 0, 0))
+                    self.tela.blit(
+                        self.quadro_vitoria,
+                        self.quadro_vitoria.get_rect(midtop=(LARGURA // 2, 18)),
+                    )
                 else:
                     self.tela.blit(self.capa_vitoria, (0, 0))
             else:
@@ -598,32 +600,27 @@ class Jogo:
 
         self._texto_com_fundo(
             f"Voltando ao menu em {restante}s...",
-            self.fonte_menor,
-            (LARGURA // 2, self.botao_menu.top - 28),
+            self.fonte_aviso,
+            (LARGURA // 2, self.botao_menu.top - 36),
         )
 
-        mouse = pygame.mouse.get_pos()
-        cor_botao = (
-            ROXO_CLARO
-            if self.botao_menu.collidepoint(mouse)
-            else ROXO
+        estilo.desenhar_botao(
+            self.tela, self.botao_menu, "VOLTAR AO MENU", pygame.mouse.get_pos(),
+            pygame.time.get_ticks(), self.fonte_botao,
         )
 
-        pygame.draw.rect(
-            self.tela, cor_botao, self.botao_menu, border_radius=14
-        )
-        pygame.draw.rect(
-            self.tela, BRANCO, self.botao_menu,
-            width=2, border_radius=14
-        )
 
-        self._texto_centralizado(
-            "VOLTAR AO MENU",
-            self.fonte_botao,
-            BRANCO,
-            self.botao_menu.center,
-        )
+    @staticmethod
+    def _ajustar_quadro(quadro):
+        """Ajusta o quadro do vídeo à largura da tela SEM deformar (antes ele era esticado para 1300x900)
+        e com suavização (antes era vizinho-mais-próximo, que deixa tudo serrilhado)."""
+        largura, altura = quadro.get_size()
+        escala = LARGURA / largura
 
+        if abs(escala - 1) < 0.01:
+            return quadro  # o vídeo já está no tamanho certo (vitoria_hd.mp4)
+
+        return pygame.transform.smoothscale(quadro, (LARGURA, round(altura * escala)))
 
     def _texto_centralizado(self, texto, fonte, cor, centro):
         imagem = fonte.render(texto, True, cor)

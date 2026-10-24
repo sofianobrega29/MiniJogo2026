@@ -1,0 +1,12 @@
+Fontes usadas no jogo (todas sob a SIL Open Font License 1.1, que permite usar e redistribuir;
+o texto de cada licença está nos arquivos *-OFL.txt desta pasta):
+
+  Italiana-Regular.ttf          botões e caixas de feitiço (letras maiúsculas elegantes, estilo do título da capa)
+  Gloock-Regular.ttf            títulos do grimório
+  CrimsonPro-Italic.ttf         texto do grimório (escrita antiga, itálico)
+  NothingYouCouldDo-Regular.ttf anotações à mão nas margens do grimório
+
+Se algum arquivo estiver faltando, o jogo usa uma fonte do sistema no lugar (veja estilo.py).
+
+Para trocar uma fonte: coloque o novo .ttf nesta pasta e mude o nome na constante FONTE_* correspondente no
+início de estilo.py (por exemplo, uma fonte mais "mágica" para os botões em FONTE_BOTAO).
