@@ -1,91 +1,190 @@
+"""Sistema sonoro do jogo (música + efeitos).
+
+Uso, de qualquer arquivo:
+    from sons import SONS
+    SONS.tocar_musica("batalha")
+    SONS.tocar_efeito("cura")
+
+Os arquivos ficam na pasta `musica/`. Se a placa de som não puder ser aberta ou
+um arquivo estiver faltando, o jogo continua normalmente, só que sem aquele som.
+
+COMO AJUSTAR O VOLUME
+    * VOLUME_MUSICA e VOLUME_EFEITOS são os "botões mestres" (0.0 a 1.0).
+    * O número ao lado de cada arquivo (em MUSICAS / EFEITOS) já está equilibrado
+      para que todos soem no mesmo nível; mexa nele só para ajustar um som específico.
+"""
+
 from pathlib import Path
+
 import pygame
+
+PASTA_MUSICA = Path(__file__).resolve().parent / "musica"
+
+# Botões mestres: multiplicam o volume de cada som.
+VOLUME_MUSICA = 1.0
+VOLUME_EFEITOS = 1.0
+
+# nome: (arquivo, volume)
+# A música da batalha toca o tempo todo, então fica baixa, por baixo dos efeitos.
+MUSICAS = {
+    "menu": ("tela_inicial.mp3", 0.30),
+    "batalha": ("batalha_zoltraak.mp3", 0.20),
+}
+
+# Os efeitos tinham volumes bem diferentes entre si; os valores abaixo os igualam
+# (os mais fortes, como as explosões, ficam bem baixos; a cura, que é suave, mais alta).
+EFEITOS = {
+    "cura": ("cura.mp3", 0.60),
+    "gelo": ("gelo.mp3", 0.25),
+    "raio": ("raio.mp3", 0.25),
+    "explosao": ("explosao_orbe.mp3", 0.10),
+    "estrela": ("estrela.mp3", 0.20),
+}
+
+# Evita o "metralhar" do mesmo som (ms mínimos entre duas execuções do mesmo efeito).
+INTERVALO_MINIMO_EFEITO = 150
 
 
 class SistemaSonoro:
     def __init__(self):
-        self.pasta_base = Path(__file__).resolve().parent
-        self.pasta_musica = self.pasta_base / "musica"
-
-        self.volume_telas = 0.7
-        self.volume_confronto = 0.2
-
         self.efeitos = {}
-        self.musica_carregada = False
+        self.musica_atual = None
+        self.pronto = False
+        self._tentou_iniciar = False
+        self._ultimo_toque = {}
+        self._fade = None  # (inicio, duracao, volume_inicial, volume_final, parar_no_fim)
 
-        if not pygame.mixer.get_init():
-            pygame.mixer.init()
-
-        self.carregar_musica()
-        self.carregar_sons_do_jogo()
-
-    def carregar_musica(self):
-        arquivo = self.pasta_musica / "musica_fundo.mp3"
-
-        if not arquivo.exists():
-            print(f"Música não encontrada: {arquivo}")
+    # ------------------------------------------------------------------
+    # Preparação
+    # ------------------------------------------------------------------
+    def iniciar(self):
+        """Abre o mixer e carrega os efeitos. Pode ser chamado várias vezes."""
+        if self._tentou_iniciar:
             return
 
+        self._tentou_iniciar = True
+
         try:
-            pygame.mixer.music.load(str(arquivo))
-            pygame.mixer.music.set_volume(self.volume_telas)
-            self.musica_carregada = True
+            if not pygame.mixer.get_init():
+                pygame.mixer.init(44100, -16, 2, 512)
+
+            pygame.mixer.set_num_channels(16)
         except pygame.error as erro:
-            print(f"Erro ao carregar a música: {erro}")
+            print(f"Som desativado (não foi possível abrir o áudio): {erro}")
+            return
 
-    def iniciar_musica(self):
-        if self.musica_carregada:
-            if not pygame.mixer.music.get_busy():
-                pygame.mixer.music.play(-1)
+        for nome, (arquivo, volume) in EFEITOS.items():
+            caminho = PASTA_MUSICA / arquivo
 
-    def aumentar_volume(self):
-        if self.musica_carregada:
-            pygame.mixer.music.set_volume(self.volume_telas)
+            if not caminho.exists():
+                print(f"Efeito sonoro não encontrado: {caminho}")
+                continue
 
-    def diminuir_volume(self):
-        if self.musica_carregada:
-            pygame.mixer.music.set_volume(self.volume_confronto)
+            try:
+                efeito = pygame.mixer.Sound(str(caminho))
+                efeito.set_volume(min(1.0, volume * VOLUME_EFEITOS))
+                self.efeitos[nome] = efeito
+            except pygame.error as erro:
+                print(f"Erro ao carregar o efeito {nome}: {erro}")
 
-    def definir_volume(self, volume):
-        volume = max(0.0, min(1.0, volume))
+        self.pronto = True
 
-        if self.musica_carregada:
-            pygame.mixer.music.set_volume(volume)
+    # ------------------------------------------------------------------
+    # Música
+    # ------------------------------------------------------------------
+    def tocar_musica(self, nome, fade_in=1500):
+        """Toca a música `nome` em loop. Se ela já está tocando, não faz nada."""
+        self.iniciar()
 
-    def pausar_musica(self):
-        pygame.mixer.music.pause()
+        if not self.pronto or nome not in MUSICAS:
+            return
 
-    def continuar_musica(self):
-        pygame.mixer.music.unpause()
+        if self.musica_atual == nome and pygame.mixer.music.get_busy():
+            if self._fade is not None and self._fade[3] == 0:  # estava sumindo: volta ao normal
+                self._fade = None
+                pygame.mixer.music.set_volume(self._volume_da_musica(nome))
 
-    def parar_musica(self):
-        pygame.mixer.music.stop()
+            return
 
-    def carregar_efeito(self, nome, arquivo):
-        caminho = self.pasta_musica / arquivo
+        arquivo, _ = MUSICAS[nome]
+        caminho = PASTA_MUSICA / arquivo
 
         if not caminho.exists():
-            print(f"Efeito sonoro não encontrado: {caminho}")
+            print(f"Música não encontrada: {caminho}")
             return
 
+        volume = self._volume_da_musica(nome)
+
         try:
-            self.efeitos[nome] = pygame.mixer.Sound(str(caminho))
+            pygame.mixer.music.stop()
+            pygame.mixer.music.load(str(caminho))
+            pygame.mixer.music.set_volume(0.0 if fade_in > 0 else volume)
+            pygame.mixer.music.play(-1)
         except pygame.error as erro:
-            print(f"Erro ao carregar o efeito {nome}: {erro}")
+            print(f"Erro ao tocar a música {nome}: {erro}")
+            self.musica_atual = None
+            return
 
-    def carregar_sons_do_jogo(self):
-        self.carregar_efeito("zoltrak", "zoltrak.mp3")
-        self.carregar_efeito("disparo_inimiga", "som_inimiga.mp3")
+        self.musica_atual = nome
+        self._fade = None
 
+        if fade_in > 0:
+            self._iniciar_fade(0.0, volume, fade_in, parar_no_fim=False)
+
+    def parar_musica(self, fade_out=1500):
+        """Some aos poucos (sem travar o jogo) e para."""
+        if not self.pronto or not pygame.mixer.music.get_busy():
+            return
+
+        if fade_out <= 0:
+            pygame.mixer.music.stop()
+            self.musica_atual = None
+            self._fade = None
+            return
+
+        self._iniciar_fade(pygame.mixer.music.get_volume(), 0.0, fade_out, parar_no_fim=True)
+
+    def atualizar(self):
+        """Chame uma vez por quadro nos laços das telas: faz os fades andarem."""
+        if self._fade is None or not self.pronto:
+            return
+
+        inicio, duracao, v_inicial, v_final, parar = self._fade
+        progresso = min(1.0, (pygame.time.get_ticks() - inicio) / max(1, duracao))
+        pygame.mixer.music.set_volume(v_inicial + (v_final - v_inicial) * progresso)
+
+        if progresso >= 1.0:
+            self._fade = None
+
+            if parar:
+                pygame.mixer.music.stop()
+                self.musica_atual = None
+
+    def _iniciar_fade(self, v_inicial, v_final, duracao, parar_no_fim):
+        self._fade = (pygame.time.get_ticks(), duracao, v_inicial, v_final, parar_no_fim)
+
+    @staticmethod
+    def _volume_da_musica(nome):
+        return min(1.0, MUSICAS[nome][1] * VOLUME_MUSICA)
+
+    # ------------------------------------------------------------------
+    # Efeitos
+    # ------------------------------------------------------------------
     def tocar_efeito(self, nome):
+        self.iniciar()
+
         efeito = self.efeitos.get(nome)
 
-        if efeito:
-            efeito.play()
+        if not self.pronto or efeito is None:
+            return
 
-    def definir_volume_efeito(self, nome, volume):
-        efeito = self.efeitos.get(nome)
+        agora = pygame.time.get_ticks()
 
-        if efeito:
-            volume = max(0.0, min(1.0, volume))
-            efeito.set_volume(volume)
+        if agora - self._ultimo_toque.get(nome, -10000) < INTERVALO_MINIMO_EFEITO:
+            return
+
+        self._ultimo_toque[nome] = agora
+        efeito.play()
+
+
+SONS = SistemaSonoro()

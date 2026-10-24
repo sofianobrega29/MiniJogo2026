@@ -19,12 +19,15 @@ from constantes import (
     AZUL_MAGICO,
     DEBUG_HITBOX,
     VIDA_BURACO_NEGRO,
+    TEMPO_ENTRE_ATAQUES,
+    FEITICOS_DE_ATAQUE,
 )
 from efeitos import TracoMagico
 from elementos import Cajado, BuracoNegro
 from feiticos import CATALOGO, GESTOS, NOMES_EXIBICAO
 from frieren import Maga
 from particulas import Particulas
+from sons import SONS
 
 PASTA_IMAGENS = Path(__file__).resolve().parent / "imagens"
 PASTA_VIDEOS = PASTA_IMAGENS / "Video"
@@ -131,6 +134,7 @@ class Jogo:
 
         self.tempo = 0
         self.tempo_real = 0
+        self.ataque_liberado_em = 0  # ms de jogo em que a Maga pode lançar o próximo ataque
         self.estado = Estado.JOGANDO
         self.tempo_no_final = 0
         self.video_tempo = 0
@@ -166,8 +170,11 @@ class Jogo:
     # Laço principal
     # ------------------------------------------------------------------
     def executar(self):
+        SONS.tocar_musica("batalha")
+
         while True:
             dt = min(self.relogio.tick(FPS), 50)
+            SONS.atualizar()
 
             resultado = self.processar_eventos()
 
@@ -284,7 +291,17 @@ class Jogo:
             self._avisar("Sua vida já está cheia!")
             return
 
+        if nome in FEITICOS_DE_ATAQUE and self.maga.recarga_restante(nome, self.tempo) == 0:
+            espera = self.ataque_liberado_em - self.tempo
+
+            if espera > 0:
+                self._avisar(f"Aguarde {espera / 1000:.1f}s para lançar outro ataque")
+                return
+
         if self.maga.conjurar(nome, self) is not None:
+            if nome in FEITICOS_DE_ATAQUE:
+                self.ataque_liberado_em = self.tempo + TEMPO_ENTRE_ATAQUES
+
             self._avisar(f"{NOMES_EXIBICAO[nome]}!")
             return
 
@@ -356,6 +373,7 @@ class Jogo:
         self.estado = estado
         self.tempo_no_final = 0
         self._sair_do_modo_feitico()
+        SONS.parar_musica(1500)   # a música da batalha some aos poucos
 
         if estado == Estado.VITORIA:
             if self.video_vitoria is not None:

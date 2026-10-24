@@ -6,10 +6,13 @@ from pathlib import Path
 import pygame
 from constantes import LARGURA, ALTURA
 from jogo import Jogo
+from sons import SONS
 
 os.chdir(Path(__file__).resolve().parent)
 
+pygame.mixer.pre_init(44100, -16, 2, 512)   # buffer pequeno: efeitos sem atraso
 pygame.init()
+SONS.iniciar()
 
 TELA = pygame.display.set_mode((LARGURA, ALTURA))
 pygame.display.set_caption("Confronto Mágico")
@@ -86,9 +89,11 @@ def desenhar_tela_inicial(botoes, mouse):
 
 def tela_inicial():
     botoes = botoes_da_tela_inicial()
+    SONS.tocar_musica("menu")
 
     while True:
         RELOGIO.tick(60)
+        SONS.atualizar()
         mouse = pygame.mouse.get_pos()
 
         for evento in pygame.event.get():
@@ -124,6 +129,7 @@ def desenhar_tela_instrucoes(mouse):
 def tela_instrucoes():
     while True:
         RELOGIO.tick(60)
+        SONS.atualizar()
         mouse = pygame.mouse.get_pos()
 
         for evento in pygame.event.get():

@@ -29,6 +29,7 @@ import random
 import pygame
 
 import visuais
+from sons import SONS
 from constantes import (
     LARGURA,
     ALTURA,
@@ -268,6 +269,7 @@ class OrbeExplosivo(Feitico):
 
     def _explodir(self, ctx, x, y, normal):
         self.ativo = False
+        SONS.tocar_efeito("explosao")
         ctx.adicionar_feitico(
             Explosao(self.dono, self.alvo, ctx.tempo, x, y, normal, self.dano)
         )
@@ -598,6 +600,7 @@ class Zoltraak(Feitico):
 
     def _disparar(self, ctx):
         """Define até onde a rajada vai: borda da arena ou a parede mágica inimiga."""
+        SONS.tocar_efeito("estrela")
         topo = self.portal_y - self.ALTURA_RAJADA // 2
         faixa = pygame.Rect(0, topo, LARGURA, self.ALTURA_RAJADA)
 
@@ -683,6 +686,7 @@ class RaioRoxo(Feitico):
         self._aleatorio = random.Random()
         self.marcador = pygame.Surface(self.coluna.size, pygame.SRCALPHA)
         self._golpeou = False
+        self._som_tocado = False
         self._flash = 0.0
 
     def update(self, ctx):
@@ -709,6 +713,10 @@ class RaioRoxo(Feitico):
             return
 
         self._fase = "golpe" if idade < self.AVISO + self.GOLPE else "fim"
+
+        if not self._som_tocado:   # o trovão soa quando o raio cai, não durante o aviso
+            self._som_tocado = True
+            SONS.tocar_efeito("raio")
         self._progresso = limitar((idade - self.AVISO - self.GOLPE) / self.DESVANECE, 0, 1)
         self._flash = max(0.0, 1.0 - (idade - self.AVISO) / 90)
 
@@ -847,6 +855,9 @@ class Cura(Feitico):
     def __init__(self, dono, alvo, agora, erro=0):
         super().__init__(dono, alvo, agora, erro)
         self.curou = dono.curar(1)
+
+        if self.curou:
+            SONS.tocar_efeito("cura")
         self.idade_atual = 0
         self._brilhou = False
 
@@ -972,6 +983,7 @@ class OrbeGelo(OrbeExplosivo):
     def _explodir(self, ctx, x, y, normal):
         """Chamado quando o floco encosta em algo. Só congela se foi o alvo."""
         self.ativo = False
+        SONS.tocar_efeito("gelo")
 
         if self.retangulo.colliderect(self.alvo.hitbox):
             self.alvo.congelar(ctx.tempo)
